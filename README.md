@@ -4,9 +4,32 @@ Durchsucht 21 deutsche E-Bike-Shops nach Angeboten ab einem Mindestrabatt
 (Standard 50 %) und listet je Treffer **Direktlink**, **Preis/UVP** und die
 **verfügbaren Größen bzw. Rahmenhöhen**.
 
-Wo ein Shop eine eigene Sale-Kategorie hat, steigt der Scraper dort ein statt
-im Gesamtkatalog — weniger Requests, weniger Rauschen. Shops ohne Sale-Filter
-(jobrad-loop) bekommen dafür ein größeres Seitenbudget (`page_budget`).
+Wo ein Shop eine eigene Sale-Kategorie hat, steigt der Scraper dort ein — aber
+**nicht ausschließlich**. Eine Sale-Kategorie ist die kuratierte Auswahl des
+Shops, keine vollständige Liste des Reduzierten:
+
+| Shop | Sale-Kategorie | Gesamtkategorie | zusätzliche Treffer |
+|---|---|---|---|
+| fahrrad24 | 89 Produkte / 41 Treffer | 474 / 72 | **+31** |
+| e-bike-only | 256 / 4 | 1308 / 11 | **+7** |
+| upway | 796 / 711 | 3500 / 71 | +38 |
+| fahrrad-xxl | 1066 / 57 | 923 / 28 | +5 |
+| denfeld, radwelt | – | – | 0 |
+
+Bei fahrrad24 fehlte so unter anderem ein Greens Corwen F750 MTB mit 64 %
+Rabatt. Wo die Lücke messbar ist, wird zusätzlich die Gesamtkategorie gescannt
+(`extra_urls` bzw. eine zweite Collection); Doppelte fallen über die
+Deduplizierung heraus.
+
+**Vorsicht bei der Messung:** Eine Kategorie nach Rabatten zu vergleichen reicht
+nicht, die Verfügbarkeit gehört dazu. upways `all` enthält 3500 Räder, davon
+sind nur 126 lieferbar — es ist das Archiv inklusive verkaufter Räder, während
+`sale` mit 796 Produkten der aktuelle Bestand ist. Nach Rabatt allein sortiert
+sah `all` wie die bessere Quelle aus; der Umstieg hätte 646 echte Angebote
+gekostet. Jetzt werden beide gescannt und der Ausverkauft-Filter trennt sie.
+
+Shops ohne Sale-Filter (jobrad-loop) bekommen ein größeres Seitenbudget
+(`page_budget`).
 
 ## Start
 

@@ -27,9 +27,11 @@ class FahrradXXL(Adapter):
 
     key = "fahrradxxl"
     name = "fahrrad-xxl.de"
-    # The shop's e-bike sale category (~23 pages) instead of the full e-bike
-    # catalogue (~2600 bikes): same markup, only reduced bikes.
+    # The sale category is the better entry point here - it yields twice the
+    # hits of the full catalogue - but it is not a superset: a handful of
+    # reduced bikes appear only in the general category, so both are scanned.
     source_url = "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/e-bike-pedelec/"
+    extra_urls = ["https://www.fahrrad-xxl.de/fahrraeder/e-bike/"]
 
     @staticmethod
     def page_url(base: str, page: int) -> str:

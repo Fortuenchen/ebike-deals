@@ -52,6 +52,13 @@ def _body_height_label(lo: int | None, hi: int | None) -> list[str]:
     return [f"für Körpergröße {lo}–{hi} cm" if lo != hi else f"für Körpergröße {lo} cm"]
 
 
+# A broad collection carries more than bikes: upway's "all" mixes in insurance
+# policies, accessories and non-electric bikes. Filtering by Shopify's
+# product_type is exact where the shop sets it.
+_NON_BIKE_TYPE = re.compile(r"insurance|versicherung|accessor|zubeh|service|garantie", re.I)
+_NON_EBIKE_TYPE = re.compile(r"non-?electric|bio[\s-]?bike|muskelkraft", re.I)
+
+
 class ShopifyAdapter(Adapter):
     collections: list[str] = []
     page_size = 250
@@ -59,7 +66,7 @@ class ShopifyAdapter(Adapter):
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
         seen: set[int] = set()
         for handle in self.collections:
-            for page in range(1, max_pages + 1):
+            for page in range(1, self.pages_for(max_pages) + 1):
                 url = (
                     f"{self.base}/collections/{handle}/products.json"
                     f"?limit={self.page_size}&page={page}"
@@ -85,6 +92,9 @@ class ShopifyAdapter(Adapter):
     def _to_offer(self, p: dict, handle: str) -> Offer | None:
         variants = p.get("variants") or []
         if not variants:
+            return None
+        ptype = p.get("product_type") or ""
+        if ptype and (_NON_BIKE_TYPE.search(ptype) or _NON_EBIKE_TYPE.search(ptype)):
             return None
 
         # Which option position holds the size?
@@ -197,7 +207,9 @@ class EBikeOnly(ShopifyAdapter):
     name = "e-bike-only.de"
     base = "https://e-bike-only.de"
     source_url = "https://e-bike-only.de/collections/e-bike-sale"
-    collections = ["e-bike-sale"]
+    # The sale collection holds 256 of 1308 e-bikes and misses 7 offers above
+    # 50 % - a curated pick, not every reduced bike.
+    collections = ["e-bike-sale", "all-e-bikes"]
 
 
 class FahrradDe(ShopifyAdapter):
@@ -219,6 +231,14 @@ class Upway(ShopifyAdapter):
     key = "upway"
     name = "upway.de"
     base = "https://upway.de"
+    # "sale" is the live stock: 796 products, all 796 buyable, 711 above 50 %.
+    # "all" is the archive - 3500 products of which only 126 are still
+    # available, because a refurbished marketplace keeps sold bikes listed.
+    # Ranking the two by discount alone made "all" look like the better source
+    # and cost 646 real offers; sale stays primary, all is the supplement that
+    # adds another 38 buyable ones.
     source_url = "https://upway.de/collections/sale"
-    collections = ["sale"]
+    collections = ["sale", "all"]
     default_condition = "refurbished"
+    #: "all" runs to ~3500 products at 250 per page
+    page_budget = 16

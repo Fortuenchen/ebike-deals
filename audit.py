@@ -80,6 +80,15 @@ def audit(adapter, fetcher) -> list[str]:
     if not with_list:
         problems.append("kein einziger Streichpreis erkannt - Selektor prüfen")
 
+    # Accessories and non-bikes leaking in from a broad category: upway's "all"
+    # collection mixes in insurance policies and bike parts.
+    cheap_share = len([o for o in offers if o.price and o.price < 400]) / len(offers)
+    if cheap_share > 0.05:
+        problems.append(
+            f"{cheap_share:.0%} der Angebote unter 400 € - vermutlich Zubehör "
+            f"in einer zu breiten Kategorie"
+        )
+
     # A shop where every product is "sold out" is almost always an adapter bug,
     # not a shop with an empty warehouse - and it is invisible in the report
     # because those offers are filtered out before they are ever shown.
@@ -89,6 +98,19 @@ def audit(adapter, fetcher) -> list[str]:
             f"alle {len(known_stock)} Angebote gelten als ausverkauft - "
             f"Verfügbarkeitslogik prüfen"
         )
+    elif known_stock:
+        # A category that is mostly sold out may be an archive rather than live
+        # stock - upway's "all" holds 3500 bikes of which 126 are buyable, and
+        # picking it over "sale" once cost 646 real offers. But scanning an
+        # archive *in addition* to live stock is legitimate, so the ratio alone
+        # is not the signal: what matters is whether anything buyable came back.
+        available = sum(1 for o in known_stock if o.in_stock)
+        sold_share = 1 - available / len(known_stock)
+        if sold_share > 0.7 and available < 50:
+            problems.append(
+                f"{sold_share:.0%} ausverkauft und nur {available} lieferbare Angebote - "
+                f"Kategorie prüfen, das sieht nach Archiv statt Lagerbestand aus"
+            )
 
     # Sizes must be frame sizes, never wheel sizes.
     wheels = [

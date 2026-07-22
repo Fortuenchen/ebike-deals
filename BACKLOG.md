@@ -32,11 +32,23 @@ Obergrenze — `400+` hieße dann 400–499 Wh. Das ist plausibel, aber nicht
 belegt; der Code behandelt es deshalb bewusst nur als Untergrenze. Ein Abgleich
 gegen ein paar Produktseiten würde die Frage klären.
 
-### 2. Leerer Zustand mit Ausweg
+### 2. Vollständigkeit je Shop regelmäßig nachmessen
+Sale-Kategorien sind kuratierte Auswahlen. Bei fahrrad24 fehlten dadurch 31
+Angebote — auffällig wurde es erst, weil jemand nach einem konkreten Rad gefragt
+hat. Ein Skript, das je Shop Sale- gegen Gesamtkategorie zählt, gehört in
+`audit.py`.
+
+**Wichtig dabei:** nach *lieferbaren* Treffern zählen, nicht nach Rabatten.
+Genau dieser Fehler ließ upways Archiv-Collection `all` (3500 Räder, 126
+lieferbar) besser aussehen als den echten Bestand `sale` (796 Räder, alle
+lieferbar). `audit.py` warnt inzwischen, wenn über 70 % einer Kategorie
+ausverkauft sind.
+
+### 3. Leerer Zustand mit Ausweg
 Statt nur „Keine Treffer“: die restriktivste aktive Bedingung nennen und einen
 Knopf „Suche zurücksetzen“ anbieten.
 
-### 3. Barrierefreiheit nachziehen
+### 4. Barrierefreiheit nachziehen
 `aria-pressed` und `aria-live` sind gesetzt. Offen: sichtbarer Fokusring auf
 den Chips (nicht nur auf Feldern), `prefers-reduced-motion`, und eine
 Ankündigung beim Sortierwechsel.
@@ -45,32 +57,32 @@ Ankündigung beim Sortierwechsel.
 
 ## Mittlerer Aufwand
 
-### 7. Tabellenansicht als Alternative
+### 5. Tabellenansicht als Alternative
 Umschalter Karten ⇄ kompakte Tabelle (Shop, Modell, Preis, UVP, Rabatt,
 Größen). Bei 300+ Treffern ist Scannen in einer Tabelle deutlich schneller.
 
-### 8. Marken-Filter
+### 6. Marken-Filter
 Chips oder Mehrfach-Dropdown aus `brand`. Die Marke steckt schon im Datenmodell,
 wird aber in der UI nirgends als Filter angeboten.
 
-### 9. Gleiches Rad bei mehreren Shops zusammenfassen
+### 7. Gleiches Rad bei mehreren Shops zusammenfassen
 Modelle über normalisierten Titel + Jahr gruppieren und die Shop-Preise
 nebeneinander zeigen. Der eigentliche Mehrwert eines Multi-Shop-Scanners —
 bislang stehen Duplikate unverbunden nebeneinander.
 *Heikel: Titel-Normalisierung ist fehleranfällig, lieber konservativ gruppieren
 und im Zweifel getrennt lassen.*
 
-### 10. Merkliste
+### 8. Merkliste
 Sterne-Icon je Karte, Ablage in `localStorage`, eigener Filter „nur gemerkte“.
 
-### 11. Diff zum letzten Lauf
+### 9. Diff zum letzten Lauf
 Vorherige `deals.json` einlesen und Karten als „neu“ / „Preis gefallen“
 markieren. Macht wiederholte Läufe erst richtig nützlich.
 
-### 12. Export
+### 10. Export
 CSV-Download der aktuell gefilterten Auswahl und ein Print-Stylesheet.
 
-### 13. Tastaturnavigation
+### 11. Tastaturnavigation
 `j`/`k` durch die Karten, `Enter` öffnet das Angebot, `Esc` leert die Suche
 (schon da). Passt zum bereits vorhandenen `/`-Shortcut.
 
@@ -78,25 +90,25 @@ CSV-Download der aktuell gefilterten Auswahl und ein Print-Stylesheet.
 
 ## Größerer Aufwand / Grundsatzentscheidungen
 
-### 14. Virtualisiertes Rendern
+### 12. Virtualisiertes Rendern
 Ab ~1000 Karten wird das DOM träge. Nur den sichtbaren Bereich rendern.
 Erst nötig, wenn die Trefferzahl deutlich wächst.
 
-### 15. Bild-Lazyload mit Platzhaltern
+### 13. Bild-Lazyload mit Platzhaltern
 `loading="lazy"` ist gesetzt, aber ohne Skeleton — beim Scrollen springt das
 Layout. Feste Seitenverhältnisse plus Platzhalterfläche.
 
-### 16. Preisverlauf ausbauen
+### 14. Preisverlauf ausbauen
 Die Basis steht (`preise.db`, Tiefstpreis, Sparkline). Offen: ein Filter
 „nur Angebote, die seit dem letzten Lauf günstiger wurden“, ein Detail-Popover
 mit der vollen Preistabelle, und eine Aufräumroutine für Angebote, die seit
 Monaten nicht mehr auftauchen.
 
-### 17. Mobile Feinschliff
+### 15. Mobile Feinschliff
 Sticky Filterleiste, Filter als Bottom-Sheet, größere Touch-Ziele.
 Die Karten sind responsiv, die Filterleiste wird auf kleinen Displays aber lang.
 
-### 18. Manueller Theme-Umschalter
+### 16. Manueller Theme-Umschalter
 Aktuell folgt der Bericht dem System. Ein Dreiklang Hell/Dunkel/System mit
 `localStorage` ist erwartbar — Aufwand gering, Nutzen aber auch.
 
@@ -113,7 +125,6 @@ Aktuell folgt der Bericht dem System. Ein Dreiklang Hell/Dunkel/System mit
 * **Sich als fremder Crawler ausgeben.** Trustpilot erlaubt namentlich
   genannten Crawlern den Zugriff. Deren User-Agent zu verwenden, um an Noten zu
   kommen, wäre eine Falschangabe darüber, wer anfragt.
-
 * **Frontend-Framework / Build-Schritt.** Der Bericht soll eine Datei bleiben,
   die per Doppelklick funktioniert — auch offline und in fünf Jahren noch.
 * **Externe CDNs für Fonts, Icons, Charts.** Gleicher Grund; außerdem lädt

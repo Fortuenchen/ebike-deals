@@ -1,0 +1,17 @@
+# HTTP-Cache und Laufzeitartefakte
+.cache/
+run.log
+
+# Generierte Ausgaben - entstehen bei jedem Lauf neu
+bericht.html
+deals.json
+
+# Preisverlauf: maschinenlokale Datensammlung, kein Quellcode.
+# Wer die Historie mitversionieren will, nimmt die Zeile raus.
+preise.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

@@ -1,0 +1,23 @@
+{
+  "_hinweis": [
+    "Vorlage für eigene Bewertungen. Zum Aktivieren umbenennen in",
+    "bewertungen_manuell.json - die Werte überschreiben dann die abgerufenen.",
+    "Gedacht vor allem für Trustpilot: deren robots.txt untersagt den",
+    "automatischen Abruf, die Note lässt sich aber von Hand eintragen.",
+    "Schlüssel sind die Shop-Keys aus 'python run.py --help'."
+  ],
+  "fahrrad24": {
+    "Trustpilot": {
+      "score": 4.3,
+      "count": 1200,
+      "url": "https://de.trustpilot.com/review/fahrrad24.de"
+    }
+  },
+  "upway": {
+    "Trustpilot": {
+      "score": 4.6,
+      "count": 8500,
+      "url": "https://de.trustpilot.com/review/upway.de"
+    }
+  }
+}

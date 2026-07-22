@@ -48,6 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="SQLite-Datei für den Preisverlauf (Standard: preise.db)")
     p.add_argument("--no-history", action="store_true",
                    help="Preisverlauf weder lesen noch schreiben")
+    p.add_argument("--ratings", type=Path, default=Path("bewertungen.json"),
+                   help="Cache für Shop-Bewertungen (Standard: bewertungen.json)")
+    p.add_argument("--no-ratings", action="store_true",
+                   help="Shop-Bewertungen nicht abrufen")
     p.add_argument("--open", action="store_true", help="Bericht im Browser öffnen")
     p.add_argument("--quiet", action="store_true", help="keine Konsolenliste ausgeben")
     return p
@@ -75,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         price_check_sample=args.price_check,
         cache_dir=args.cache,
         history_db=None if args.no_history else args.history,
+        ratings_cache=None if args.no_ratings else args.ratings,
     )
 
     print(f"Scanne {len(config.shops) or len(ADAPTERS)} Shops "

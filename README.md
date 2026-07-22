@@ -91,6 +91,41 @@ Haken zählen sie als „keine Angabe“.
 
 Weitere Ideen stehen in [BACKLOG.md](BACKLOG.md).
 
+## Shop-Bewertungen
+
+Jeder Shop wird mit seiner Bewertung verlinkt – in der Quellentabelle
+ausführlich, auf jeder Angebotskarte kompakt (`TS 4,86`).
+
+**Trusted Shops** betreibt eine öffentliche, schlüsselfreie API. Der Shop-Name
+wird über `/rest/public/v2/shops.json?url=…` aufgelöst, die Note kommt aus
+`/quality/reviews.json`. 10 der 21 Shops haben ein Profil.
+
+Dabei sind zwei Fallen abgefangen, die sonst **fremde Bewertungen** an einen
+Shop hängen:
+
+* Der Lookup matcht unscharf. `www.bike24.de` liefert „MEGA Bike“, `fahrrad.de`
+  ein *gelöschtes* Profil von `ps-fahrrad.de`. Die zurückgegebene Domain muss
+  deshalb exakt mit der angefragten übereinstimmen — das verhindert drei
+  Fehlzuordnungen.
+* Ein Shop kann mehrere Profile je Markt haben: jobrad-loop hat ein deutsches
+  (4,33) und ein niederländisches mit anderer Note. Es gewinnt `targetMarketISO3
+  = DEU`.
+
+**Trustpilot** beendet seine robots.txt mit `User-agent: * / Disallow: /`.
+Namentlich genannte Crawler dürfen, diese Anwendung gehört nicht dazu, und sich
+als einer auszugeben wäre eine Falschangabe darüber, wer anfragt. Es wird
+deshalb **keine Note abgerufen**. Verlinkt wird nur, wo der Shop sein
+Trustpilot-Profil selbst auf der Seite ausweist — das belegt zugleich, dass es
+existiert (4 Shops).
+
+Wer Trustpilot-Noten sehen will, trägt sie selbst ein: aus
+`bewertungen_manuell.beispiel.json` eine `bewertungen_manuell.json` machen.
+Manuelle Werte überschreiben abgerufene und sind im Tooltip als solche
+gekennzeichnet.
+
+Die Noten werden in `bewertungen.json` zwischengespeichert und wöchentlich
+erneuert (`--ratings`, `--no-ratings`).
+
 ## Preisverlauf
 
 Jeder Lauf schreibt Preis und UVP je Angebot in eine SQLite-Datei

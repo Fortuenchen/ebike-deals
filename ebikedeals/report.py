@@ -91,7 +91,34 @@ def _esc(s: str) -> str:
     return html_mod.escape(s or "")
 
 
-def _offer_card(o: Offer) -> str:
+def _rating_badges(entries, compact: bool = False) -> str:
+    """Rating chips. A chip without a score is a link to the profile, no more."""
+    out = []
+    for e in entries or []:
+        short = "TS" if e.platform.startswith("Trusted") else "TP"
+        if e.score is None:
+            label = short if compact else f"{_esc(e.platform)} ansehen"
+            cls = "rating rating--link"
+            title = f"{e.platform}: Profil ansehen (keine Note abrufbar)"
+        else:
+            label = f"{short}&nbsp;{e.stars}" if compact else (
+                f"{_esc(e.platform)} {e.stars}/5"
+                + (f" · {e.count:,}".replace(",", ".") + " Bew." if e.count else "")
+            )
+            cls = "rating"
+            title = (
+                f"{e.platform}: {e.stars} von {e.scale:.0f}"
+                + (f", {e.count} Bewertungen" if e.count else "")
+                + (" (manuell eingetragen)" if e.manual else "")
+            )
+        out.append(
+            f'<a class="{cls}" href="{_esc(e.url)}" target="_blank" rel="noopener nofollow" '
+            f'title="{_esc(title)}">{label}</a>'
+        )
+    return "".join(out)
+
+
+def _offer_card(o: Offer, ratings=None) -> str:
     d = o.effective_discount_pct or 0
     if o.size_links:
         sizes = " ".join(
@@ -151,7 +178,7 @@ def _offer_card(o: Offer) -> str:
              data-search="{_esc(haystack)}">
       <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}</div>
       <div class="body">
-        <p class="shop">{_esc(o.shop)} {avail}</p>
+        <p class="shop">{_esc(o.shop)} {avail}{_rating_badges(ratings, compact=True)}</p>
         <h3><a href="{_esc(o.url)}" target="_blank" rel="noopener">{_esc(o.title)}</a></h3>
         <p class="prices">
           <span class="now">{_esc(_eur(o.price))}</span>
@@ -256,10 +283,14 @@ def _render_html(report: RunReport) -> str:
             cls, status = "ok", f"{r.scanned} Angebote geprüft"
             if r.sold_out:
                 status += f" · {r.sold_out} ausverkauft übersprungen"
+        badges = _rating_badges(report.ratings.get(r.key)) or (
+            '<span class="muted">–</span>'
+        )
         shop_rows.append(
             f'<tr class="{cls}"><td><a href="{_esc(r.source_url)}" target="_blank" '
             f'rel="noopener">{_esc(r.name)}</a></td>'
-            f"<td class='num'>{len(r.offers)}</td><td>{status}</td></tr>"
+            f"<td class='num'>{len(r.offers)}</td><td class='ratings'>{badges}</td>"
+            f"<td>{status}</td></tr>"
         )
 
     shop_counts = Counter(o.shop for o in offers)
@@ -304,9 +335,9 @@ def _render_html(report: RunReport) -> str:
             f'{hs["urls"]} beobachtete Angebote</p>'
         )
 
-    cards = "\n".join(_offer_card(o) for o in offers) or (
-        '<p class="empty">Keine Angebote über der Rabattschwelle gefunden.</p>'
-    )
+    cards = "\n".join(
+        _offer_card(o, report.ratings.get(o.shop)) for o in offers
+    ) or '<p class="empty">Keine Angebote über der Rabattschwelle gefunden.</p>'
 
     return f"""<!doctype html>
 <html lang="de">
@@ -367,6 +398,19 @@ a {{ color:inherit; }}
   font-family:inherit; }}
 .sel input {{ width:104px; }}
 .hint {{ font-size:.75rem; color:var(--muted); white-space:nowrap; }}
+th {{ text-align:left; padding:6px 8px; font-size:.78rem; color:var(--muted);
+  font-weight:600; text-transform:uppercase; letter-spacing:.04em; }}
+th.num {{ text-align:right; }}
+.tablenote {{ margin:10px 2px 2px; font-size:.78rem; color:var(--muted); }}
+.tablenote code {{ background:var(--chip); padding:1px 5px; border-radius:4px; }}
+.muted {{ color:var(--muted); }}
+td.ratings {{ white-space:nowrap; }}
+.rating {{ display:inline-block; background:var(--chip); border:1px solid var(--line);
+  border-radius:5px; padding:1px 7px; margin:0 4px 2px 0; font-size:.76rem;
+  text-decoration:none; color:var(--fg); white-space:nowrap; }}
+.rating:hover {{ border-color:var(--accent); }}
+.rating--link {{ border-style:dashed; color:var(--muted); }}
+.shop .rating {{ margin-left:6px; text-transform:none; letter-spacing:0; }}
 .sel select:focus, .sel input:focus {{ outline:2px solid var(--accent); outline-offset:1px; }}
 .flabel {{ font-size:.85rem; color:var(--muted); align-self:center; margin-right:2px; }}
 .chip--size.active {{ background:var(--accent); color:#fff; border-color:transparent; }}
@@ -426,7 +470,15 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
 
   <details>
     <summary>Quellen &amp; Status ({len(report.results)} Shops)</summary>
-    <table>{''.join(shop_rows)}</table>
+    <table>
+      <thead><tr><th>Shop</th><th class="num">Treffer</th>
+        <th>Bewertung</th><th>Status</th></tr></thead>
+      {''.join(shop_rows)}
+    </table>
+    <p class="tablenote">Noten von Trusted Shops (öffentliche API, wöchentlich
+      aktualisiert). Trustpilot verbietet in seiner robots.txt den automatischen
+      Abruf – dort führt der Link zum Profil, eine Note wird nicht angezeigt.
+      Eigene Werte lassen sich in <code>bewertungen_manuell.json</code> eintragen.</p>
   </details>
 
   <div class="controls">

@@ -10,6 +10,10 @@ deals.json
 # Wer die Historie mitversionieren will, nimmt die Zeile raus.
 preise.db
 
+# Bewertungs-Cache (wird wöchentlich neu geholt). Die manuell gepflegte
+# Variante ist dagegen bewusst nicht ignoriert - siehe .beispiel.json.
+bewertungen.json
+
 # Python
 __pycache__/
 *.py[cod]

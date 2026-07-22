@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .adapters import ADAPTERS, BY_KEY, Adapter
 from .history import PriceHistory
+from . import ratings
 from .model import Offer, ShopResult, detect_condition, parse_battery_wh
 from .net import Blocked, Disallowed, Fetcher
 from .robots import RobotsCache
@@ -29,6 +30,8 @@ class RunConfig:
     price_check_sample: int = 15
     #: SQLite file holding the price series; None disables history
     history_db: Path | None = None
+    #: cache file for shop ratings; None disables rating lookup entirely
+    ratings_cache: Path | None = None
     cache_dir: Path | None = None
     cache_ttl: float = 3600.0
 
@@ -39,6 +42,8 @@ class RunReport:
     results: list[ShopResult] = field(default_factory=list)
     history_stats: dict = field(default_factory=dict)
     history_error: str = ""
+    #: {shop key: [Rating, ...]}
+    ratings: dict = field(default_factory=dict)
 
     @property
     def offers(self) -> list[Offer]:
@@ -67,6 +72,16 @@ def run(config: RunConfig) -> RunReport:
     report = RunReport(config=config)
 
     try:
+        if config.ratings_cache:
+            # Independent of the scrape: a shop with no hits today still has a
+            # rating worth showing in the source table.
+            try:
+                report.ratings = ratings.collect(
+                    [c() for c in selected], fetcher, config.ratings_cache
+                )
+            except Exception:
+                report.ratings = {}
+
         with cf.ThreadPoolExecutor(max_workers=config.workers) as pool:
             futures = {
                 pool.submit(_scrape_shop, cls(), fetcher, robots, config): cls

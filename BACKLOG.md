@@ -19,27 +19,24 @@ externe Abhängigkeiten. Punkte, die das aufgeben würden, sind markiert.
 
 ## Hoher Nutzen, kleiner Aufwand
 
-### 1. Akku-Abdeckung erhöhen
-Nur 61 % der Angebote haben eine Wh-Angabe, weil sie außerhalb von jobrad-loop
-und bikeexchange aus dem Titel geparst wird. Shopware- und Magento-Shops nennen
-die Kapazität in den technischen Daten der Produktseite — die wird für Treffer
-ohne Größenangabe ohnehin geladen, ließe sich also mitnehmen. Analog zu
-`sizes.py` als eigene Extraktionsstrategie.
+### 1. Exakte Wh statt Untergrenzen bei upway
+96 % der Angebote haben eine Akku-Information, aber 669 davon nur als
+Untergrenze (`≥ 600 Wh`), weil upway in Schwellen taggt. Ein Filter „bis
+700 Wh“ kann damit nichts anfangen. Die Produktseite nennt womöglich den
+exakten Wert — für 669 Angebote wären das 669 zusätzliche Abrufe, also nur
+sinnvoll mit Cache und Budget.
 
-### 2. Rahmengröße ↔ Körpergröße verbinden
-Beide Filter greifen heute auf disjunkte Shop-Gruppen: Rahmengröße bei Shops
-mit Varianten, Körpergröße bei Refurbished-Shops. Wer „178 cm“ eingibt, sieht
-von fahrrad24 & Co. entweder alles oder nichts. Eine konservative
-Zuordnungstabelle (z. B. 178 cm → 52–56 cm Rahmen, ± eine Stufe) würde beide
-Welten verbinden.
-*Heikel: Die Zuordnung ist rahmenform- und herstellerabhängig. Nur mit
-sichtbarem Hinweis „geschätzt“ und abschaltbar.*
+*Nebenbefund:* upway vergibt die Schwellen kumulativ (300+/400+/500+/600+).
+Wenn das durchgängig stimmt, wäre die höchste Schwelle zugleich eine
+Obergrenze — `400+` hieße dann 400–499 Wh. Das ist plausibel, aber nicht
+belegt; der Code behandelt es deshalb bewusst nur als Untergrenze. Ein Abgleich
+gegen ein paar Produktseiten würde die Frage klären.
 
-### 3. Leerer Zustand mit Ausweg
+### 2. Leerer Zustand mit Ausweg
 Statt nur „Keine Treffer“: die restriktivste aktive Bedingung nennen und einen
 Knopf „Suche zurücksetzen“ anbieten.
 
-### 4. Barrierefreiheit nachziehen
+### 3. Barrierefreiheit nachziehen
 `aria-pressed` und `aria-live` sind gesetzt. Offen: sichtbarer Fokusring auf
 den Chips (nicht nur auf Feldern), `prefers-reduced-motion`, und eine
 Ankündigung beim Sortierwechsel.

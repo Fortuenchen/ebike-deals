@@ -72,6 +72,9 @@ class Fetcher:
         self.curl_hosts: set[str] = set()
         #: set by the runner to a RobotsCache; None disables robots checking
         self.robots = None
+        #: set by the runner when --render is active; adapters that need a
+        #: browser look for it here
+        self.renderer = None
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
 

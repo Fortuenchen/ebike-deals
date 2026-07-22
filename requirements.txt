@@ -1,1 +1,5 @@
 httpx>=0.27
+
+# Optional, nur für --render (lucky-bike.de). Nach der Installation zusätzlich:
+#   python -m playwright install chromium
+# playwright>=1.40

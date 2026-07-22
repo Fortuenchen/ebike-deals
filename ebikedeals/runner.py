@@ -11,6 +11,7 @@ from .history import PriceHistory
 from . import ratings
 from .model import Offer, ShopResult, detect_condition, parse_battery_wh
 from .net import Blocked, Disallowed, Fetcher
+from .render import Renderer
 from .robots import RobotsCache
 from .sizes import enrich, read_battery_wh, read_prices
 
@@ -32,6 +33,8 @@ class RunConfig:
     history_db: Path | None = None
     #: cache file for shop ratings; None disables rating lookup entirely
     ratings_cache: Path | None = None
+    #: render JS-only listings with headless Chromium (needs playwright)
+    render: bool = False
     cache_dir: Path | None = None
     cache_ttl: float = 3600.0
 
@@ -42,6 +45,7 @@ class RunReport:
     results: list[ShopResult] = field(default_factory=list)
     history_stats: dict = field(default_factory=dict)
     history_error: str = ""
+    render_error: str = ""
     #: {shop key: [Rating, ...]}
     ratings: dict = field(default_factory=dict)
 
@@ -71,6 +75,14 @@ def run(config: RunConfig) -> RunReport:
     selected = [BY_KEY[k] for k in config.shops] if config.shops else list(ADAPTERS)
     report = RunReport(config=config)
 
+    renderer = None
+    if config.render and any(c.needs_render for c in selected):
+        try:
+            renderer = Renderer(delay=max(config.delay, 1.2))
+            fetcher.renderer = renderer
+        except Exception as e:
+            report.render_error = str(e)
+
     try:
         if config.ratings_cache:
             # Independent of the scrape: a shop with no hits today still has a
@@ -90,6 +102,8 @@ def run(config: RunConfig) -> RunReport:
             for fut in cf.as_completed(futures):
                 report.results.append(fut.result())
     finally:
+        if renderer is not None:
+            renderer.close()
         fetcher.close()
 
     # History is recorded once for the whole run, after all shops are in, so a
@@ -111,7 +125,10 @@ def _scrape_shop(
 ) -> ShopResult:
     result = ShopResult(key=adapter.key, name=adapter.name, source_url=adapter.source_url)
 
-    if adapter.skipped_reason:
+    if adapter.needs_render and getattr(fetcher, "renderer", None) is None:
+        result.skipped_reason = adapter.skipped_reason
+        return result
+    if adapter.skipped_reason and not adapter.needs_render:
         result.skipped_reason = adapter.skipped_reason
         return result
 

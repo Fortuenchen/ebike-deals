@@ -104,6 +104,16 @@ Aktuell folgt der Bericht dem System. Ein Dreiklang Hell/Dunkel/System mit
 
 ## Bewusst nicht vorgesehen
 
+* **Umgehen von Bot-Erkennung.** bike24.de stellt über Akamai eine
+  JS-Challenge mit Proof-of-Work. Sie zu lösen wäre das Aushebeln einer
+  Maßnahme, die genau den Zweck hat, automatisierte Zugriffe auszuschließen —
+  anders als bei lucky-bike, wo nur gerendert werden muss und die robots.txt
+  den Zugriff erlaubt. Der saubere Weg für bike24 wäre eine Anfrage nach einem
+  Produktdatenfeed.
+* **Sich als fremder Crawler ausgeben.** Trustpilot erlaubt namentlich
+  genannten Crawlern den Zugriff. Deren User-Agent zu verwenden, um an Noten zu
+  kommen, wäre eine Falschangabe darüber, wer anfragt.
+
 * **Frontend-Framework / Build-Schritt.** Der Bericht soll eine Datei bleiben,
   die per Doppelklick funktioniert — auch offline und in fünf Jahren noch.
 * **Externe CDNs für Fonts, Icons, Charts.** Gleicher Grund; außerdem lädt

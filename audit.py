@@ -6,6 +6,7 @@ or an adapter bug - both are worth seeing before trusting a report.
 
     python audit.py            # all shops
     python audit.py upway      # one shop
+    python audit.py --render   # include shops that need a browser
 """
 
 import re
@@ -16,6 +17,8 @@ from pathlib import Path
 from ebikedeals.adapters import ADAPTERS, BY_KEY
 from ebikedeals.model import looks_like_size
 from ebikedeals.net import Fetcher
+from ebikedeals.render import Renderer
+from ebikedeals.robots import RobotsCache
 
 PAGES = 2
 CACHE = Path(__file__).parent / ".cache"
@@ -119,8 +122,16 @@ def audit(adapter, fetcher) -> list[str]:
 
 
 def main() -> int:
-    keys = sys.argv[1:] or [a.key for a in ADAPTERS]
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    use_render = "--render" in sys.argv
+    keys = args or [a.key for a in ADAPTERS]
+
     fetcher = Fetcher(cache_dir=CACHE, delay=0.6)
+    fetcher.robots = RobotsCache(fetcher)
+    renderer = Renderer(delay=1.2) if use_render else None
+    if renderer is not None:
+        fetcher.renderer = renderer
+
     failed = 0
     for key in keys:
         cls = BY_KEY.get(key)
@@ -128,7 +139,10 @@ def main() -> int:
             print(f"?? unbekannter Shop {key}")
             continue
         adapter = cls()
-        if adapter.skipped_reason:
+        if adapter.needs_render and renderer is None:
+            print(f"--  {adapter.name:24s} übersprungen (braucht --render)")
+            continue
+        if adapter.skipped_reason and not adapter.needs_render:
             print(f"--  {adapter.name:24s} übersprungen ({adapter.skipped_reason[:44]})")
             continue
         problems = audit(adapter, fetcher)
@@ -139,6 +153,8 @@ def main() -> int:
                 print(f"      - {p}")
         else:
             print(f"OK  {adapter.name}")
+    if renderer is not None:
+        renderer.close()
     fetcher.close()
     print(f"\n{len(keys) - failed}/{len(keys)} ohne Befund")
     return 1 if failed else 0

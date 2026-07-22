@@ -5,30 +5,11 @@ from __future__ import annotations
 from .base import Adapter
 from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
 from .js_apps import BikeExchange, JobradLoop
+from .luckybike import LuckyBike
 from .magento import Fahrrad24, Fahrradlagerverkauf
 from .shopify import BikeMarket24, Boc24, EBikeOnly, FahrradDe, Upway
 from .shopware6 import BikeAngebot, BikeDiscount, Denfeld, MhwBike, RadweltShop
 from .woocommerce import EbikeStock
-
-
-class LuckyBike(Adapter):
-    """lucky-bike.de serves the listing only to real browsers.
-
-    The category HTML returned to any non-browser client contains just the
-    filter UI plus a 'recently viewed' slider - no product tiles, and no XHR
-    the listing could be read from instead. Needs a rendering engine.
-    """
-
-    key = "luckybike"
-    name = "lucky-bike.de"
-    source_url = "https://www.lucky-bike.de/Fahrraeder/E-Bike/"
-    skipped_reason = (
-        "Listing wird nur an echte Browser ausgeliefert (kein Produkt-Markup, kein XHR). "
-        "Erfordert einen Renderer wie Playwright — mit --render aktivierbar."
-    )
-
-    def scrape(self, fetcher, max_pages):
-        return iter(())
 
 
 class Bike24(Adapter):

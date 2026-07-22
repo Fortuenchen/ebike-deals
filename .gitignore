@@ -1,6 +1,7 @@
 # HTTP-Cache und Laufzeitartefakte
 .cache/
 run.log
+audit.log
 
 # Generierte Ausgaben - entstehen bei jedem Lauf neu
 bericht.html

@@ -40,6 +40,9 @@ class Adapter:
     default_condition: str = ""
     #: set when the shop cannot be scraped over plain HTTP
     skipped_reason: str = ""
+    #: True when the listing only exists after JavaScript has run, so the shop
+    #: is skipped unless the run was started with --render
+    needs_render: bool = False
 
     def listing_urls(self) -> list[str]:
         return [self.source_url, *self.extra_urls]

@@ -146,8 +146,9 @@ Gelesen wird immer *vor* dem Schreiben, sonst stünde der heutige Preis schon in
 der Tabelle und jedes Angebot wäre automatisch auf „Tiefstpreis“. Ein zweiter
 Lauf am selben Tag überschreibt den Tageswert, statt die Reihe aufzublähen.
 
-Einzige Abhängigkeit ist `httpx` (`pip install -r requirements.txt`).
+Einzige Pflichtabhängigkeit ist `httpx` (`pip install -r requirements.txt`).
 HTML wird mit einem eigenen Mini-DOM auf Basis der Standardbibliothek geparst.
+`playwright` ist optional und nur für `--render` nötig (siehe unten).
 
 ## Wie der Rabatt bestimmt wird
 
@@ -214,14 +215,46 @@ eigenen Direktlink. Bei jobrad-loop ist zu beachten, dass
 `frame_height_manufacturer` die Rahmengröße ist – `wheel_size_*` (28") ist die
 Laufradgröße und darf nicht als Größe gelten.
 
-## Zwei Shops liefern keine Daten
+## lucky-bike.de: `--render`
 
-* **bike24.de** – Akamai Bot Manager mit JS-Challenge. Das automatisiert zu
-  lösen wäre ein Umgehen der Bot-Erkennung; bewusst nicht implementiert.
-* **lucky-bike.de** – gibt das Listing nur an echte Browser aus (kein
-  Produkt-Markup, kein XHR, aus dem man es stattdessen lesen könnte).
+lucky-bike gibt das Listing nur an echte Browser aus. Über normales HTTP kommt
+die Filter-UI plus ein „Zuletzt gesehen“-Slider zurück, keine Produktkacheln,
+und es gibt kein XHR, aus dem man die Liste stattdessen lesen könnte. Die
+Produktseiten liefern zwar JSON-LD über HTTP, aber **ohne Referenzpreis** —
+ohne UVP lässt sich kein Rabatt berechnen.
 
-Beide erscheinen im Bericht mit Begründung statt stillschweigend zu fehlen.
+Mit `--render` rendert die App diese Seiten in Headless-Chromium:
+
+```bash
+pip install playwright && python -m playwright install chromium
+python run.py --render
+```
+
+Ohne den Schalter wird der Shop übersprungen und im Bericht mit Begründung
+ausgewiesen. Das Rendering blockiert Bilder, Medien und Schriften, hält
+dieselbe Pause je Host wie der Rest der App und prüft weiterhin robots.txt.
+
+Es wird dabei **keine Schutzmaßnahme umgangen**: keine Challenge, kein CAPTCHA,
+keine vorgetäuschte Identität — Headless-Chromium *ist* eine echte
+Browser-Engine, und die robots.txt des Shops erlaubt diese Pfade (nachprüfbar
+mit `check_robots.py`).
+
+## bike24.de: bewusst nicht implementiert
+
+bike24 sitzt hinter Akamai Bot Manager. Jede Anfrage ohne gelöste Challenge
+bekommt ein Interstitial, das einen Proof-of-Work berechnet und an
+`/_sec/verify?provider=interstitial` sendet, um ein Freigabe-Cookie zu bekommen.
+
+Das ist etwas grundsätzlich anderes als bei lucky-bike: Hier stellt der
+Betreiber eine aktive Hürde auf, die genau den Zweck hat, automatisierte
+Zugriffe auszuschließen. Sie zu lösen wäre ein Umgehen der Bot-Erkennung, und
+das ist in dieser Anwendung nicht vorgesehen — unabhängig davon, wer danach
+fragt.
+
+Wer bike24-Angebote braucht: Die vorgefilterte Sale-URL steht im Bericht und
+lässt sich im eigenen Browser öffnen. Für regelmäßige Auswertungen wäre der
+saubere Weg eine Anfrage bei bike24 nach einem Produktdatenfeed oder
+API-Zugang.
 
 ## WooCommerce
 

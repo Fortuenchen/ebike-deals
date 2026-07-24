@@ -39,7 +39,7 @@ def audit(adapter, fetcher) -> list[str]:
         return [f"scrape schlug fehl: {type(e).__name__}: {e}"]
 
     if not offers:
-        return ["keine Produkte geliefert"]
+        return ["keine Produkte geliefert - Adapter oder Kategorie pruefen"]
 
     urls = Counter(o.url for o in offers)
     dupes = [u for u, n in urls.items() if n > 1]

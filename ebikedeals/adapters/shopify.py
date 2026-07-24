@@ -65,7 +65,7 @@ class ShopifyAdapter(Adapter):
 
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
         seen: set[int] = set()
-        for handle in self.collections:
+        for index, handle in enumerate(self.collections):
             for page in range(1, self.pages_for(max_pages) + 1):
                 url = (
                     f"{self.base}/collections/{handle}/products.json"
@@ -74,6 +74,13 @@ class ShopifyAdapter(Adapter):
                 try:
                     data = fetcher.get_json(url)
                 except Exception:
+                    # A failure on the very first request means the shop was
+                    # not reached at all. Swallowing it reports "0 products
+                    # checked", which reads like "no offers today" - fahrrad.de
+                    # showed exactly that after a transient error. Later pages
+                    # and later collections just end the walk.
+                    if page == 1 and index == 0:
+                        raise
                     break
                 products = data.get("products") or []
                 if not products:

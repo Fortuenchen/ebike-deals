@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import html as html_mod
 import json
+import math
 import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
 from .fit import estimate_body_height
+from .standorte import alle_orte, orte_fuer, _laden
 from .model import Offer
 from .runner import RunReport
 
@@ -157,12 +159,29 @@ def _offer_card(o: Offer, ratings=None) -> str:
     est_lo, est_hi = (None, None)
     if not o.body_height_min:
         est_lo, est_hi = estimate_body_height(o.sizes, o.title)
+
+    # Orte, an denen das Rad greifbar ist. Filialangaben gelten fuer genau
+    # dieses Rad, der Firmensitz nur ersatzweise - der Unterschied steht im
+    # Titel-Attribut, damit niemand "abholbar" hineinliest, wo es nicht steht.
+    orte = orte_fuer(o.shop, o.branches)
+    ort_coords = ";".join(f"{x['lat']:.4f},{x['lon']:.4f}" for x in orte)
+    if orte:
+        namen = ", ".join(x["ort"] for x in orte[:5])
+        mehr = f" +{len(orte) - 5}" if len(orte) > 5 else ""
+        titel = ("Dieses Rad steht in diesen Filialen"
+                 if o.branches else "Sitz des Shops - keine Angabe zu diesem Rad")
+        ortszeile = (f'<p class="orte" title="{_esc(titel)}">'
+                     f'<span class="pin">{"◉" if o.branches else "○"}</span> '
+                     f'{_esc(namen)}{mehr}</p>')
+    else:
+        ortszeile = '<p class="orte orte--online"><span class="pin">→</span> nur Versand</p>'
     # Everything the search box should match, lower-cased once at build time so
     # filtering stays a substring test even with hundreds of cards.
     haystack = " ".join(
         [o.title, o.brand, o.shop, o.condition, o.note, o.availability]
         + o.sizes
         + ([f"{o.battery_wh}wh"] if o.battery_wh else [])
+        + [x["ort"] for x in orte]
     ).lower()
 
     return f"""
@@ -175,6 +194,8 @@ def _offer_card(o: Offer, ratings=None) -> str:
              data-saving="{o.saving or 0}"
              data-drop="{o.price_change if o.price_change is not None else 0}"
              data-sizes="{_esc('|'.join(_size_keys(o)))}"
+             data-orte="{_esc(ort_coords)}"
+             data-vorort="{'1' if o.branches else ('0' if orte else '')}"
              data-search="{_esc(haystack)}">
       <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}</div>
       <div class="body">
@@ -186,6 +207,7 @@ def _offer_card(o: Offer, ratings=None) -> str:
           {saving}
           {battery}
         </p>
+        {ortszeile}
         {_history_block(o)}
         <p class="sizes"><span class="lbl">Größen/Rahmenhöhen:</span> {sizes}</p>
         {note}
@@ -268,6 +290,66 @@ def _sparkline(points: list, width: int = 96, height: int = 22) -> str:
     )
 
 
+# Bereich, der Deutschland umschliesst - Grundlage der Projektion.
+_DE = {"lat_min": 47.2, "lat_max": 55.1, "lon_min": 5.8, "lon_max": 15.1}
+
+
+def _projiziere(lat: float, lon: float, breite: int, hoehe: int) -> tuple[float, float]:
+    """Mercator-artige Projektion auf die Zeichenflaeche.
+
+    Der cos-Faktor auf die Laenge korrigiert, dass Laengengrade zum Pol hin
+    zusammenlaufen - ohne ihn waere Deutschland spuerbar in die Breite gezogen.
+    """
+    mitte = math.radians((_DE["lat_min"] + _DE["lat_max"]) / 2)
+    x = (lon - _DE["lon_min"]) / (_DE["lon_max"] - _DE["lon_min"])
+    y = 1 - (lat - _DE["lat_min"]) / (_DE["lat_max"] - _DE["lat_min"])
+    # Seitenverhaeltnis anhand der mittleren Breite korrigieren.
+    x = 0.5 + (x - 0.5) * math.cos(mitte) / 0.62
+    return x * breite, y * hoehe
+
+
+def _karte(offers: list[Offer], breite: int = 340, hoehe: int = 460) -> str:
+    """Inline-SVG-Karte der Orte mit Angeboten.
+
+    Bewusst ohne Kartenkacheln: Der Bericht ist eine einzelne Datei, die auch
+    offline funktionieren soll. Ein Kachel-Dienst waere ein Fremdzugriff bei
+    jedem Oeffnen - und wuerde nebenbei verraten, wer den Bericht liest.
+    Die Punkte allein beantworten die Frage "wo liegt was" ausreichend.
+    """
+    zaehler: dict[tuple[str, float, float], dict] = {}
+    for o in offers:
+        for ort in orte_fuer(o.shop, o.branches):
+            key = (ort["ort"], ort["lat"], ort["lon"])
+            eintrag = zaehler.setdefault(key, {"n": 0, "vorort": False})
+            eintrag["n"] += 1
+            if o.branches:
+                eintrag["vorort"] = True
+    if not zaehler:
+        return '<p class="empty">Keine Standortdaten.</p>'
+
+    groesste = max(e["n"] for e in zaehler.values())
+    punkte = []
+    for (ort, lat, lon), e in sorted(zaehler.items(), key=lambda kv: -kv[1]["n"]):
+        x, y = _projiziere(lat, lon, breite, hoehe)
+        r = 3 + 7 * (e["n"] / groesste) ** 0.5
+        klasse = "pt pt--vorort" if e["vorort"] else "pt"
+        punkte.append(
+            f'<circle class="{klasse}" cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" '
+            f'data-ort="{_esc(ort)}" data-lat="{lat:.4f}" data-lon="{lon:.4f}">'
+            f'<title>{_esc(ort)}: {e["n"]} Angebote</title></circle>'
+        )
+    # Ein grobes Umriss-Rechteck als Orientierung - keine Grenzdaten noetig.
+    return (
+        f'<svg class="karte" viewBox="0 0 {breite} {hoehe}" width="{breite}" '
+        f'height="{hoehe}" role="img" aria-label="Orte mit Angeboten">'
+        f'<rect x="0.5" y="0.5" width="{breite - 1}" height="{hoehe - 1}" '
+        f'class="karte-rahmen"/>'
+        f'<circle class="pt pt--ich" id="ichPunkt" cx="-99" cy="-99" r="6"/>'
+        + "".join(punkte)
+        + "</svg>"
+    )
+
+
 def _render_html(report: RunReport) -> str:
     cfg = report.config
     offers = report.offers
@@ -324,6 +406,23 @@ def _render_html(report: RunReport) -> str:
     bat_hi = max(batteries) if batteries else 0
     n_bat = len(batteries)
     n_bh = sum(1 for o in offers if o.body_height_min)
+
+    # Standortauswahl: Orte mit Angeboten zuerst, danach die Bezugsstädte für
+    # alle, in deren Nähe kein Shop sitzt.
+    daten = _laden()
+    mit_angebot = {o["ort"] for off in offers for o in orte_fuer(off.shop, off.branches)}
+    bezug = daten.get("bezugsorte", {})
+    ort_options = "".join(
+        f'<option value="{x["lat"]:.4f},{x["lon"]:.4f}">{_esc(x["ort"])}'
+        f'{" ·" if x["ort"] in mit_angebot else ""}</option>'
+        for x in sorted(
+            {e["ort"]: e for e in list(bezug.values()) + alle_orte()}.values(),
+            key=lambda e: e["ort"],
+        )
+    )
+    n_vorort = sum(1 for o in offers if o.branches)
+    n_orte = len(mit_angebot)
+    map_svg = _karte(offers)
 
     hs = report.history_stats
     history_note = ""
@@ -424,6 +523,18 @@ td.ratings {{ white-space:nowrap; }}
 .tag--up {{ background:rgba(200,16,46,.12); color:var(--badge); }}
 .tag--low {{ background:var(--accent); color:#fff; font-weight:600; }}
 .spark {{ color:var(--muted); margin-left:auto; }}
+.orte {{ margin:0; font-size:.8rem; color:var(--muted); }}
+.orte .pin {{ color:var(--accent); font-size:.9rem; }}
+.orte--online .pin {{ color:var(--muted); }}
+.mapbox {{ margin:0 0 18px; }}
+.mapbox summary {{ font-weight:600; }}
+.karte {{ display:block; margin:12px auto 4px; max-width:100%; height:auto; }}
+.karte-rahmen {{ fill:var(--card); stroke:var(--line); stroke-width:1; rx:10; }}
+.karte .pt {{ fill:var(--muted); opacity:.55; cursor:pointer; }}
+.karte .pt:hover {{ opacity:1; }}
+.karte .pt--vorort {{ fill:var(--accent); opacity:.75; }}
+.karte .pt--ich {{ fill:var(--badge); opacity:1; stroke:var(--card); stroke-width:2;
+  pointer-events:none; }}
 .grid {{ display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }}
 .card {{ background:var(--card); border:1px solid var(--line); border-radius:12px;
   overflow:hidden; display:flex; flex-direction:column; }}
@@ -504,6 +615,38 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   </div>
 
   <div class="controls">
+    <label class="sel">Mein Standort
+      <select id="ort">
+        <option value="">— egal —</option>
+        {ort_options}
+      </select>
+    </label>
+    <label class="sel">Umkreis
+      <select id="radius">
+        <option value="">unbegrenzt</option>
+        <option value="25">25 km</option>
+        <option value="50">50 km</option>
+        <option value="100">100 km</option>
+        <option value="200">200 km</option>
+      </select>
+    </label>
+    <label class="toggle" title="Nur Räder, die laut Shop in einer Filiale stehen — nicht bloß Shops, die zufällig in der Nähe sitzen.">
+      <input type="checkbox" id="nurVorOrt"> Nur vor Ort verfügbar ({n_vorort})</label>
+    <button class="chip" id="geoBtn" type="button"
+            title="Fragt den Browser nach Ihrem Standort. Funktioniert nur über https oder localhost, nicht bei einer lokal geöffneten Datei.">
+      Standort ermitteln</button>
+    <span class="hint" id="geoHint"></span>
+  </div>
+
+  <details class="mapbox">
+    <summary>Karte ({n_orte} Orte)</summary>
+    {map_svg}
+    <p class="tablenote">Luftlinie, keine Fahrstrecke. Punkte zeigen Orte mit
+      Angeboten; gefüllt = mindestens ein Rad steht dort, offen = nur Firmensitz.
+      Koordinaten von OpenStreetMap/Nominatim.</p>
+  </details>
+
+  <div class="controls">
     <label class="sel">Körpergröße
       <input type="number" id="bh" min="120" max="220" step="1" placeholder="cm">
       <span class="hint">{n_bh} mit Angabe</span>
@@ -554,6 +697,13 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   var bh = document.getElementById('bh');
   var bmin = document.getElementById('bmin');
   var bmax = document.getElementById('bmax');
+  var ortSel = document.getElementById('ort');
+  var radiusSel = document.getElementById('radius');
+  var nurVorOrt = document.getElementById('nurVorOrt');
+  var geoBtn = document.getElementById('geoBtn');
+  var geoHint = document.getElementById('geoHint');
+  var ichPunkt = document.getElementById('ichPunkt');
+  var meinOrt = null;          // [lat, lon] oder null
   var strict = document.getElementById('strict');
   var estimate = document.getElementById('estimate');
   var onlyNew = document.getElementById('onlyNew');
@@ -591,6 +741,9 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     if (num(bmax) !== null) p.set('wmax', num(bmax));
     if (strict.checked) p.set('strict', '1');
     if (!estimate.checked) p.set('noest', '1');
+    if (ortSel.value) p.set('ort', ortSel.value);
+    if (radiusSel.value) p.set('km', radiusSel.value);
+    if (nurVorOrt.checked) p.set('vorort', '1');
     if (onlyNew.checked) p.set('new', '1');
     var offShops = shopChips.filter(function (c) {{ return !c.classList.contains('active'); }});
     if (offShops.length) {{
@@ -627,6 +780,10 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     bmax.value = p.get('wmax') || '';
     strict.checked = p.get('strict') === '1';
     estimate.checked = p.get('noest') !== '1';
+    ortSel.value = p.get('ort') || '';
+    radiusSel.value = p.get('km') || '';
+    nurVorOrt.checked = p.get('vorort') === '1';
+    setzeStandort(ortSel.value);
     onlyNew.checked = p.get('new') === '1';
     setChips(shopChips, 'shop', p.has('shops') ? p.get('shops').split(',') : null);
     setChips(sizeChips, 'size', p.has('sizes') ? p.get('sizes').split(',') : []);
@@ -641,8 +798,34 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     'drop':       function (a, b) {{ return a.drop - b.drop; }}
   }};
 
+  // Luftlinie in km (Haversine) - dieselbe Rechnung wie in standorte.py.
+  function distanz(aLat, aLon, bLat, bLon) {{
+    var R = 6371, rad = Math.PI / 180;
+    var dLat = (bLat - aLat) * rad, dLon = (bLon - aLon) * rad;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(aLat * rad) * Math.cos(bLat * rad) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.asin(Math.sqrt(h));
+  }}
+
+  // Kuerzeste Entfernung zu einem der Orte der Karte, oder null.
+  function naechsteEntfernung(card) {{
+    if (!meinOrt) return null;
+    var roh = card.dataset.orte;
+    if (!roh) return null;
+    var best = null;
+    roh.split(';').forEach(function (paar) {{
+      var t = paar.split(',');
+      if (t.length !== 2) return;
+      var d = distanz(meinOrt[0], meinOrt[1], parseFloat(t[0]), parseFloat(t[1]));
+      if (best === null || d < best) best = d;
+    }});
+    return best;
+  }}
+
   function apply() {{
     var shops = activeSet(shopChips, 'shop');
+    var radius = radiusSel.value ? parseFloat(radiusSel.value) : null;
     var sizes = activeSet(sizeChips, 'size');
     // Every search word must appear somewhere in the card, so "cube bosch"
     // narrows instead of widening.
@@ -699,6 +882,14 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
         }}
       }}
 
+      if (ok && nurVorOrt.checked) ok = card.dataset.vorort === '1';
+      if (ok && radius !== null) {{
+        var d = naechsteEntfernung(card);
+        // Ohne Standortangabe laesst sich die Entfernung nicht pruefen -
+        // solche Angebote gelten als unbekannt, nicht als zu weit weg.
+        if (d === null) {{ missing = true; ok = !strict.checked; }}
+        else ok = d <= radius;
+      }}
       if (ok && terms.length) {{
         var hay = card.dataset.search;
         ok = terms.every(function (t) {{ return hay.indexOf(t) !== -1; }});
@@ -770,7 +961,61 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   [q, pmin, pmax, bh, bmin, bmax].forEach(function (el) {{
     el.addEventListener('input', apply);
   }});
-  [sort, onlyNew, strict, estimate].forEach(function (el) {{
+  function setzeStandort(wert) {{
+    var t = (wert || '').split(',');
+    meinOrt = t.length === 2 && t[0] ? [parseFloat(t[0]), parseFloat(t[1])] : null;
+    if (ichPunkt) {{
+      if (meinOrt) {{
+        // Dieselbe Projektion wie beim Zeichnen der Punkte.
+        var latMin = 47.2, latMax = 55.1, lonMin = 5.8, lonMax = 15.1;
+        var mitte = ((latMin + latMax) / 2) * Math.PI / 180;
+        var x = (meinOrt[1] - lonMin) / (lonMax - lonMin);
+        var y = 1 - (meinOrt[0] - latMin) / (latMax - latMin);
+        x = 0.5 + (x - 0.5) * Math.cos(mitte) / 0.62;
+        ichPunkt.setAttribute('cx', (x * 340).toFixed(1));
+        ichPunkt.setAttribute('cy', (y * 460).toFixed(1));
+      }} else {{
+        ichPunkt.setAttribute('cx', '-99');
+      }}
+    }}
+  }}
+
+  ortSel.addEventListener('change', function () {{
+    setzeStandort(ortSel.value);
+    geoHint.textContent = '';
+    apply();
+  }});
+
+  geoBtn.addEventListener('click', function () {{
+    if (!navigator.geolocation) {{
+      geoHint.textContent = 'Browser kann das nicht.';
+      return;
+    }}
+    geoHint.textContent = 'wird ermittelt …';
+    navigator.geolocation.getCurrentPosition(function (pos) {{
+      meinOrt = [pos.coords.latitude, pos.coords.longitude];
+      ortSel.value = '';
+      setzeStandort(meinOrt[0] + ',' + meinOrt[1]);
+      geoHint.textContent = 'Standort übernommen.';
+      apply();
+    }}, function () {{
+      // Haeufigster Fall: lokal geoeffnete Datei, da sperrt Chrome die
+      // Standortabfrage grundsaetzlich. Die Ortsauswahl bleibt der Weg.
+      geoHint.textContent = 'nicht verfügbar — bitte Ort wählen';
+    }}, {{ timeout: 8000 }});
+  }});
+
+  // Klick auf einen Kartenpunkt setzt den Standort dorthin.
+  document.querySelectorAll('.karte .pt').forEach(function (pt) {{
+    pt.addEventListener('click', function () {{
+      ortSel.value = pt.dataset.lat + ',' + pt.dataset.lon;
+      setzeStandort(ortSel.value);
+      geoHint.textContent = 'Standort: ' + pt.dataset.ort;
+      apply();
+    }});
+  }});
+
+  [sort, onlyNew, strict, estimate, radiusSel, nurVorOrt].forEach(function (el) {{
     el.addEventListener('change', apply);
   }});
   q.addEventListener('keydown', function (e) {{

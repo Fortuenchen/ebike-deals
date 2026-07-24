@@ -81,6 +81,17 @@ class FahrradXXL(Adapter):
             el.text for el in card.find_all(cls="fxxl-element-artikel__variant-slider-size-item")
         )
 
+        # Filialen, in denen genau dieses Rad steht. Die IDs stehen als
+        # JSON-Liste am Artikel; 0 heisst "nur Versand" und ist keine Filiale.
+        branches: list[str] = []
+        avail = card.find(cls="fxxl-element-artikel__available")
+        if avail is not None:
+            try:
+                ids = json.loads(avail.get("data-availableonbranch") or "[]")
+            except (ValueError, TypeError):
+                ids = []
+            branches = [str(i) for i in dict.fromkeys(ids) if i]
+
         return Offer(
             shop=self.key,
             title=f"{brand} {title}".strip(),
@@ -89,6 +100,7 @@ class FahrradXXL(Adapter):
             list_price=list_price,
             brand=brand,
             sizes=sizes,
+            branches=branches,
             image=img.get("src") if img is not None else "",
             shop_discount_pct=shop_pct,
         )

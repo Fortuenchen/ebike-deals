@@ -1,0 +1,489 @@
+{
+ "bezugsorte": {
+  "Aachen": {
+   "lat": 50.77635,
+   "lon": 6.08386,
+   "name": "Aachen, Städteregion Aachen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Aachen"
+  },
+  "Augsburg": {
+   "lat": 48.36903,
+   "lon": 10.89795,
+   "name": "Augsburg, Bayern, Deutschland",
+   "ort": "Augsburg"
+  },
+  "Berlin": {
+   "lat": 52.51739,
+   "lon": 13.39513,
+   "name": "Berlin, Deutschland",
+   "ort": "Berlin"
+  },
+  "Bielefeld": {
+   "lat": 52.0191,
+   "lon": 8.53101,
+   "name": "Bielefeld, Nordrhein-Westfalen, Deutschland",
+   "ort": "Bielefeld"
+  },
+  "Bochum": {
+   "lat": 51.48181,
+   "lon": 7.21966,
+   "name": "Bochum, Nordrhein-Westfalen, Deutschland",
+   "ort": "Bochum"
+  },
+  "Bonn": {
+   "lat": 50.73526,
+   "lon": 7.10246,
+   "name": "Bonn, Nordrhein-Westfalen, Deutschland",
+   "ort": "Bonn"
+  },
+  "Braunschweig": {
+   "lat": 52.26466,
+   "lon": 10.52361,
+   "name": "Braunschweig, Niedersachsen, Deutschland",
+   "ort": "Braunschweig"
+  },
+  "Bremen": {
+   "lat": 53.07582,
+   "lon": 8.80716,
+   "name": "Bremen, Deutschland",
+   "ort": "Bremen"
+  },
+  "Darmstadt": {
+   "lat": 49.87277,
+   "lon": 8.65118,
+   "name": "Darmstadt, Hessen, Deutschland",
+   "ort": "Darmstadt"
+  },
+  "Dortmund": {
+   "lat": 51.51423,
+   "lon": 7.46528,
+   "name": "Dortmund, Nordrhein-Westfalen, Deutschland",
+   "ort": "Dortmund"
+  },
+  "Dresden": {
+   "lat": 51.04933,
+   "lon": 13.73814,
+   "name": "Dresden, Sachsen, Deutschland",
+   "ort": "Dresden"
+  },
+  "Duisburg": {
+   "lat": 51.435,
+   "lon": 6.75956,
+   "name": "Duisburg, Nordrhein-Westfalen, Deutschland",
+   "ort": "Duisburg"
+  },
+  "Düsseldorf": {
+   "lat": 51.2254,
+   "lon": 6.77631,
+   "name": "Düsseldorf, Nordrhein-Westfalen, Deutschland",
+   "ort": "Düsseldorf"
+  },
+  "Erfurt": {
+   "lat": 50.9778,
+   "lon": 11.02874,
+   "name": "Erfurt, Thüringen, Deutschland",
+   "ort": "Erfurt"
+  },
+  "Essen": {
+   "lat": 51.45822,
+   "lon": 7.01582,
+   "name": "Essen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Essen"
+  },
+  "Frankfurt am Main": {
+   "lat": 50.11064,
+   "lon": 8.68209,
+   "name": "Frankfurt am Main, Hessen, Deutschland",
+   "ort": "Frankfurt am Main"
+  },
+  "Freiburg im Breisgau": {
+   "lat": 47.99609,
+   "lon": 7.8494,
+   "name": "Freiburg im Breisgau, Baden-Württemberg, Deutschland",
+   "ort": "Freiburg im Breisgau"
+  },
+  "Gelsenkirchen": {
+   "lat": 51.51103,
+   "lon": 7.09601,
+   "name": "Gelsenkirchen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Gelsenkirchen"
+  },
+  "Hagen": {
+   "lat": 51.35829,
+   "lon": 7.4733,
+   "name": "Hagen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Hagen"
+  },
+  "Halle (Saale)": {
+   "lat": 51.48244,
+   "lon": 11.9713,
+   "name": "Halle (Saale), Sachsen-Anhalt, Deutschland",
+   "ort": "Halle (Saale)"
+  },
+  "Hamburg": {
+   "lat": 53.55017,
+   "lon": 10.00132,
+   "name": "Hamburg, Deutschland",
+   "ort": "Hamburg"
+  },
+  "Hannover": {
+   "lat": 52.37448,
+   "lon": 9.73855,
+   "name": "Hannover, Region Hannover, Niedersachsen, Deutschland",
+   "ort": "Hannover"
+  },
+  "Heidelberg": {
+   "lat": 49.40936,
+   "lon": 8.69472,
+   "name": "Heidelberg, Baden-Württemberg, Deutschland",
+   "ort": "Heidelberg"
+  },
+  "Ingolstadt": {
+   "lat": 48.76302,
+   "lon": 11.42504,
+   "name": "Ingolstadt, Bayern, Deutschland",
+   "ort": "Ingolstadt"
+  },
+  "Karlsruhe": {
+   "lat": 49.00687,
+   "lon": 8.40342,
+   "name": "Karlsruhe, Baden-Württemberg, Deutschland",
+   "ort": "Karlsruhe"
+  },
+  "Kassel": {
+   "lat": 51.31578,
+   "lon": 9.49785,
+   "name": "Kassel, Hessen, Deutschland",
+   "ort": "Kassel"
+  },
+  "Kiel": {
+   "lat": 54.32271,
+   "lon": 10.13556,
+   "name": "Kiel, Schleswig-Holstein, Deutschland",
+   "ort": "Kiel"
+  },
+  "Koblenz": {
+   "lat": 50.35333,
+   "lon": 7.5944,
+   "name": "Koblenz, Rheinland-Pfalz, Deutschland",
+   "ort": "Koblenz"
+  },
+  "Krefeld": {
+   "lat": 51.33312,
+   "lon": 6.56233,
+   "name": "Krefeld, Nordrhein-Westfalen, Deutschland",
+   "ort": "Krefeld"
+  },
+  "Köln": {
+   "lat": 50.93836,
+   "lon": 6.95997,
+   "name": "Köln, Nordrhein-Westfalen, Deutschland",
+   "ort": "Köln"
+  },
+  "Leipzig": {
+   "lat": 51.34063,
+   "lon": 12.37473,
+   "name": "Leipzig, Sachsen, Deutschland",
+   "ort": "Leipzig"
+  },
+  "Lübeck": {
+   "lat": 53.86644,
+   "lon": 10.68474,
+   "name": "Lübeck, Schleswig-Holstein, Deutschland",
+   "ort": "Lübeck"
+  },
+  "Magdeburg": {
+   "lat": 52.13148,
+   "lon": 11.64008,
+   "name": "Magdeburg, Sachsen-Anhalt, Deutschland",
+   "ort": "Magdeburg"
+  },
+  "Mannheim": {
+   "lat": 49.48929,
+   "lon": 8.46731,
+   "name": "Mannheim, Baden-Württemberg, Deutschland",
+   "ort": "Mannheim"
+  },
+  "Mönchengladbach": {
+   "lat": 51.19471,
+   "lon": 6.43538,
+   "name": "Mönchengladbach, Nordrhein-Westfalen, Deutschland",
+   "ort": "Mönchengladbach"
+  },
+  "München": {
+   "lat": 48.13711,
+   "lon": 11.57538,
+   "name": "München, Bayern, Deutschland",
+   "ort": "München"
+  },
+  "Münster": {
+   "lat": 51.96251,
+   "lon": 7.62519,
+   "name": "Münster, Nordrhein-Westfalen, Deutschland",
+   "ort": "Münster"
+  },
+  "Nürnberg": {
+   "lat": 49.45387,
+   "lon": 11.0773,
+   "name": "Nürnberg, Bayern, Deutschland",
+   "ort": "Nürnberg"
+  },
+  "Oberhausen": {
+   "lat": 51.46961,
+   "lon": 6.85144,
+   "name": "Oberhausen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Oberhausen"
+  },
+  "Osnabrück": {
+   "lat": 52.27196,
+   "lon": 8.04763,
+   "name": "Osnabrück, Niedersachsen, Deutschland",
+   "ort": "Osnabrück"
+  },
+  "Potsdam": {
+   "lat": 52.40093,
+   "lon": 13.05914,
+   "name": "Potsdam, Brandenburg, Deutschland",
+   "ort": "Potsdam"
+  },
+  "Regensburg": {
+   "lat": 49.01953,
+   "lon": 12.09749,
+   "name": "Regensburg, Bayern, Deutschland",
+   "ort": "Regensburg"
+  },
+  "Rostock": {
+   "lat": 54.08867,
+   "lon": 12.14002,
+   "name": "Rostock, Mecklenburg-Vorpommern, Deutschland",
+   "ort": "Rostock"
+  },
+  "Saarbrücken": {
+   "lat": 49.23436,
+   "lon": 6.99638,
+   "name": "Saarbrücken, Regionalverband Saarbrücken, Saarland, Deutschland",
+   "ort": "Saarbrücken"
+  },
+  "Stuttgart": {
+   "lat": 48.77845,
+   "lon": 9.18001,
+   "name": "Stuttgart, Baden-Württemberg, Deutschland",
+   "ort": "Stuttgart"
+  },
+  "Trier": {
+   "lat": 49.75962,
+   "lon": 6.64419,
+   "name": "Trier, Trierweiler, Rheinland-Pfalz, Deutschland",
+   "ort": "Trier"
+  },
+  "Ulm": {
+   "lat": 48.3985,
+   "lon": 9.99125,
+   "name": "Ulm, Baden-Württemberg, Deutschland",
+   "ort": "Ulm"
+  },
+  "Wiesbaden": {
+   "lat": 50.08204,
+   "lon": 8.24166,
+   "name": "Wiesbaden, Hessen, Deutschland",
+   "ort": "Wiesbaden"
+  },
+  "Wuppertal": {
+   "lat": 51.26402,
+   "lon": 7.17804,
+   "name": "Wuppertal, Nordrhein-Westfalen, Deutschland",
+   "ort": "Wuppertal"
+  },
+  "Würzburg": {
+   "lat": 49.77804,
+   "lon": 9.94348,
+   "name": "Würzburg, Bayern, Deutschland",
+   "ort": "Würzburg"
+  }
+ },
+ "filialen": {
+  "10": {
+   "lat": 50.38689,
+   "lon": 7.49753,
+   "name": "Mülheim-Kärlich, Weißenthurm, Landkreis Mayen-Koblenz, Rheinland-Pfalz, Deutschland",
+   "ort": "Mülheim-Kärlich"
+  },
+  "11": {
+   "lat": 50.83235,
+   "lon": 12.91891,
+   "name": "Chemnitz, Lichtenau, Sachsen, Deutschland",
+   "ort": "Chemnitz"
+  },
+  "12": {
+   "lat": 50.35333,
+   "lon": 7.5944,
+   "name": "Koblenz, Rheinland-Pfalz, Deutschland",
+   "ort": "Koblenz"
+  },
+  "13": {
+   "lat": 49.99952,
+   "lon": 8.27363,
+   "name": "Mainz, Rheinland-Pfalz, Deutschland",
+   "ort": "Mainz"
+  },
+  "14": {
+   "lat": 49.47041,
+   "lon": 8.43816,
+   "name": "Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland",
+   "ort": "Ludwigshafen am Rhein"
+  },
+  "15": {
+   "lat": 48.74276,
+   "lon": 9.30717,
+   "name": "Esslingen am Neckar, Landkreis Esslingen, Baden-Württemberg, Deutschland",
+   "ort": "Esslingen am Neckar"
+  },
+  "16": {
+   "lat": 51.48181,
+   "lon": 7.21966,
+   "name": "Bochum, Nordrhein-Westfalen, Deutschland",
+   "ort": "Bochum"
+  },
+  "19": {
+   "lat": 49.86159,
+   "lon": 8.5762,
+   "name": "Griesheim, Landkreis Darmstadt-Dieburg, Hessen, 64347, Deutschland",
+   "ort": "Griesheim"
+  },
+  "3": {
+   "lat": 51.96251,
+   "lon": 7.62519,
+   "name": "Münster, Nordrhein-Westfalen, Deutschland",
+   "ort": "Münster"
+  },
+  "42": {
+   "lat": 51.37999,
+   "lon": 12.49363,
+   "name": "Taucha, Nordsachsen, Sachsen, 04425, Deutschland",
+   "ort": "Taucha"
+  },
+  "44": {
+   "lat": 49.48857,
+   "lon": 10.95872,
+   "name": "Fürth, Bayern, Deutschland",
+   "ort": "Fürth"
+  },
+  "47": {
+   "lat": 51.51423,
+   "lon": 7.46528,
+   "name": "Dortmund, Nordrhein-Westfalen, Deutschland",
+   "ort": "Dortmund"
+  },
+  "5": {
+   "lat": 51.48244,
+   "lon": 11.9713,
+   "name": "Halle (Saale), Sachsen-Anhalt, Deutschland",
+   "ort": "Halle (Saale)"
+  },
+  "54": {
+   "lat": 49.39273,
+   "lon": 8.59303,
+   "name": "Plankstadt, Rhein-Neckar-Kreis, Baden-Württemberg, Deutschland",
+   "ort": "Plankstadt"
+  },
+  "56": {
+   "lat": 48.89093,
+   "lon": 8.70255,
+   "name": "Pforzheim, Baden-Württemberg, Deutschland",
+   "ort": "Pforzheim"
+  },
+  "7": {
+   "lat": 51.51103,
+   "lon": 7.09601,
+   "name": "Gelsenkirchen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Gelsenkirchen"
+  },
+  "8": {
+   "lat": 51.04933,
+   "lon": 13.73814,
+   "name": "Dresden, Sachsen, Deutschland",
+   "ort": "Dresden"
+  },
+  "9": {
+   "lat": 50.77528,
+   "lon": 7.18955,
+   "name": "Sankt Augustin, Rhein-Sieg-Kreis, Nordrhein-Westfalen, 53757, Deutschland",
+   "ort": "Sankt Augustin"
+  }
+ },
+ "quelle": "OpenStreetMap / Nominatim (ODbL)",
+ "shops": {
+  "bikeangebot": {
+   "lat": 50.30268,
+   "lon": 7.75189,
+   "name": "Sulzbach, Bad Ems-Nassau, Rhein-Lahn-Kreis, Rheinland-Pfalz, Deutschland",
+   "ort": "Sulzbach"
+  },
+  "bikediscount": {
+   "lat": 50.73526,
+   "lon": 7.10246,
+   "name": "Bonn, Nordrhein-Westfalen, Deutschland",
+   "ort": "Bonn"
+  },
+  "bikemarket24": {
+   "lat": 54.08867,
+   "lon": 12.14002,
+   "name": "Rostock, Mecklenburg-Vorpommern, Deutschland",
+   "ort": "Rostock"
+  },
+  "denfeld": {
+   "lat": 51.35829,
+   "lon": 7.4733,
+   "name": "Hagen, Nordrhein-Westfalen, Deutschland",
+   "ort": "Hagen"
+  },
+  "ebikestock": {
+   "lat": 52.51739,
+   "lon": 13.39513,
+   "name": "Berlin, Deutschland",
+   "ort": "Berlin"
+  },
+  "fahrrad24": {
+   "lat": 49.00687,
+   "lon": 8.40342,
+   "name": "Karlsruhe, Baden-Württemberg, Deutschland",
+   "ort": "Karlsruhe"
+  },
+  "lagerverkauf": {
+   "lat": 47.65922,
+   "lon": 9.17507,
+   "name": "Konstanz, VVG der Stadt Konstanz, Landkreis Konstanz, Baden-Württemberg, Deutschland",
+   "ort": "Konstanz"
+  },
+  "mhwbike": {
+   "lat": 51.82039,
+   "lon": 8.65884,
+   "name": "Hövelhof, Kreis Paderborn, Nordrhein-Westfalen, 33161, Deutschland",
+   "ort": "Hövelhof"
+  },
+  "nubuk": {
+   "lat": 47.7811,
+   "lon": 9.61247,
+   "name": "Ravensburg, GVV Mittleres Schussental, Landkreis Ravensburg, Baden-Württemberg, Deutschlan",
+   "ort": "Ravensburg"
+  },
+  "rad1": {
+   "lat": 54.32271,
+   "lon": 10.13556,
+   "name": "Kiel, Schleswig-Holstein, Deutschland",
+   "ort": "Kiel"
+  },
+  "radfieber": {
+   "lat": 53.55017,
+   "lon": 10.00132,
+   "name": "Hamburg, Deutschland",
+   "ort": "Hamburg"
+  },
+  "radwelt": {
+   "lat": 54.30029,
+   "lon": 9.66501,
+   "name": "Rendsburg, Kreis Rendsburg-Eckernförde, Schleswig-Holstein, 24768, Deutschland",
+   "ort": "Rendsburg"
+  }
+ }
+}

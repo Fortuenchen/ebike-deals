@@ -43,6 +43,10 @@ class Offer:
     #: filter their stock by fit.
     body_height_min: int | None = None
     body_height_max: int | None = None
+    #: Orte, an denen genau dieses Rad vor Ort steht. fahrrad-xxl weist das je
+    #: Artikel aus; bei Shops ohne solche Angabe bleibt die Liste leer und es
+    #: zählt nur der Firmensitz.
+    branches: list[str] = field(default_factory=list)
     note: str = ""
 
     # -- price history, filled by the history store after scraping -------

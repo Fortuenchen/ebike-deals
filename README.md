@@ -114,6 +114,44 @@ Haken zählen sie als „keine Angabe“.
 
 Weitere Ideen stehen in [BACKLOG.md](BACKLOG.md).
 
+## Regionale Suche
+
+Zwei Ebenen, die man nicht verwechseln darf:
+
+* **Filiale** (`◉`) — *dieses* Rad steht dort. fahrrad-xxl weist das je Artikel
+  aus (`data-availableonbranch`), und nur das trägt die Aussage „in Dresden
+  abholbar". Von 81 geprüften Artikeln hatten 74 eine Filialangabe.
+* **Firmensitz** (`○`) — der Shop hat dort ein Ladengeschäft, über dieses Rad
+  sagt das nichts. Reine Versender erscheinen als „nur Versand".
+
+Im Bericht: Standort wählen (80 Orte), Umkreis 25–200 km, „nur vor Ort
+verfügbar". Ein Klick auf einen Kartenpunkt setzt den Standort dorthin. Der
+Browser-Standort geht über den Knopf — der funktioniert allerdings nur über
+`https` oder `localhost`, bei einer lokal geöffneten Datei sperrt Chrome die
+Abfrage. Deshalb ist die Ortsauswahl der verlässliche Weg.
+
+### Karte ohne Kartendienst
+
+Die Karte ist ein Inline-SVG mit Punkten, ohne Kacheln. Ein Kachel-Dienst wäre
+ein Fremdzugriff bei jedem Öffnen des Berichts — und würde nebenbei verraten,
+wer ihn wann liest. Für die Frage „wo liegt was" reichen Punkte; die Projektion
+korrigiert das Seitenverhältnis über den Kosinus der mittleren Breite, sonst
+wäre Deutschland spürbar in die Breite gezogen.
+
+Entfernungen sind **Luftlinie** (Haversine), keine Fahrstrecke — für „was ist in
+meiner Nähe" genau genug und ohne Routing-Dienst.
+
+### Woher die Koordinaten kommen
+
+`geocode_standorte.py` bestimmt sie einmalig über Nominatim (OpenStreetMap) und
+schreibt `standorte.json` (11 KB, versioniert). Der eigentliche Scan braucht
+damit keinen Geocoder. Nominatims Regeln — höchstens eine Anfrage pro Sekunde,
+identifizierender User-Agent — hält das Skript ein; es sind 80 Abfragen,
+einmalig.
+
+Enthalten sind 18 fahrrad-xxl-Filialen, 12 Shop-Standorte und 50 größere
+deutsche Städte als Bezugsorte für alle, in deren Nähe kein Shop sitzt.
+
 ## Shop-Bewertungen
 
 Jeder Shop wird mit seiner Bewertung verlinkt – in der Quellentabelle

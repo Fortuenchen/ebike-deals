@@ -115,7 +115,15 @@ class RobotsCache:
         origin = f"{parts.scheme}://{parts.netloc}"
         if origin not in self._cache:
             try:
-                self._cache[origin] = self.fetcher.get(f"{origin}/robots.txt")
+                # robots.txt gehoert keinem einzelnen Shop-Lauf, sondern gilt
+                # fuer jeden Abruf gegen diese Domain. Deshalb ein eigenes
+                # Fach mit dem Host als Merkmal - sonst stuenden bei 21 Shops
+                # 21 zusaetzliche Zeilen in der Uebersicht.
+                from .cachetags import ROBOTS, SHARED, CacheTags, host_of
+                self._cache[origin] = self.fetcher.get(
+                    f"{origin}/robots.txt",
+                    tags=CacheTags(shop=SHARED, kind=ROBOTS, label=host_of(origin)),
+                )
             except Exception:
                 self._cache[origin] = None
         text = self._cache[origin]

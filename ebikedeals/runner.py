@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .adapters import ADAPTERS, BY_KEY, Adapter
+from .cachetags import LISTING, PRODUCT
 from .history import PriceHistory
 from . import ratings
 from .model import Offer, ShopResult, detect_condition, parse_battery_wh
@@ -149,25 +150,31 @@ def _scrape_shop(
 
     hits: list[Offer] = []
     try:
-        for offer in adapter.scrape(fetcher, config.max_pages):
-            result.scanned += 1
-            discount = offer.effective_discount_pct
-            if discount is None or discount < config.min_discount:
-                continue
-            if offer.in_stock is False and not config.include_sold_out:
-                result.sold_out += 1
-                continue
-            # Titles/URLs plus whatever the adapter already noted (jobrad-loop
-            # states "refurbished" in the variant attributes, not the title).
-            offer.condition = (
-                detect_condition(offer.title, offer.url, offer.note)
-                or adapter.default_condition
-            )
-            if offer.battery_wh is None:
-                offer.battery_wh = parse_battery_wh(offer.title, offer.note)
-            if offer.condition and offer.condition.lower() not in offer.note.lower():
-                offer.note = " · ".join(filter(None, [offer.note, offer.condition]))
-            hits.append(offer)
+        # Der Scope muss waehrend der Iteration aktiv sein, nicht nur beim
+        # Erzeugen des Generators - deshalb liegt die Schleife darin. Alles,
+        # was der Adapter abruft, landet unter diesem Shop und wird auch nur
+        # dort wieder gesucht.
+        with fetcher.scope(adapter.key, LISTING):
+            for offer in adapter.scrape(fetcher, config.max_pages):
+                result.scanned += 1
+                discount = offer.effective_discount_pct
+                if discount is None or discount < config.min_discount:
+                    continue
+                if offer.in_stock is False and not config.include_sold_out:
+                    result.sold_out += 1
+                    continue
+                # Titles/URLs plus whatever the adapter already noted
+                # (jobrad-loop states "refurbished" in the variant attributes,
+                # not the title).
+                offer.condition = (
+                    detect_condition(offer.title, offer.url, offer.note)
+                    or adapter.default_condition
+                )
+                if offer.battery_wh is None:
+                    offer.battery_wh = parse_battery_wh(offer.title, offer.note)
+                if offer.condition and offer.condition.lower() not in offer.note.lower():
+                    offer.note = " · ".join(filter(None, [offer.note, offer.condition]))
+                hits.append(offer)
     except Disallowed as e:
         result.skipped_reason = str(e)
     except Blocked as e:
@@ -198,7 +205,10 @@ def _scrape_shop(
             if not needs_sizes and checked >= config.price_check_sample:
                 continue
             try:
-                html = fetcher.get(offer.url)
+                # Produktseiten liegen getrennt von den Listen: Sie veralten
+                # anders und lassen sich so gezielt verwerfen.
+                with fetcher.scope(adapter.key, PRODUCT):
+                    html = fetcher.get(offer.url)
             except Exception:
                 continue
             if needs_sizes:

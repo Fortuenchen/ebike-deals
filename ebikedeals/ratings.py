@@ -30,6 +30,8 @@ import json
 import re
 import time
 from dataclasses import dataclass, asdict
+
+from .cachetags import RATING
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -149,7 +151,10 @@ def collect(adapters, fetcher, cache_path: Path | None) -> dict[str, list[Rating
             if ts:
                 entries.append(ts)
             try:
-                html = fetcher.get(adapter.source_url)
+                # Startseite des Shops, nur fuer die Bewertungssuche geholt -
+                # nicht mit dem Listing-Cache des Shops vermischen.
+                with fetcher.scope(adapter.key, RATING, "profil"):
+                    html = fetcher.get(adapter.source_url)
                 tp = find_trustpilot_link(html, domain)
                 if tp:
                     entries.append(tp)

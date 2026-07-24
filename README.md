@@ -263,6 +263,43 @@ Standardbibliothek, es kommt also keine Abhängigkeit dazu.
 Zusätzlich räumt jeder Lauf abgelaufene Einträge weg — das tat vorher niemand,
 der Cache wuchs unbegrenzt. Praktisch gemessen: **350 MB → 201 KB**.
 
+### Kategorisierter Cache
+
+Der Cache war eine flache Halde undurchsichtiger Hashes. Jeder Eintrag trägt
+jetzt drei Merkmale, die zugleich seinen Ablageort bilden:
+
+```
+.cache/<shop>/<kind>/<hash>.xz
+```
+
+* **shop** — Adapter-Key (`fahrrad24`), ersatzweise der Host
+* **kind** — `listing`, `product`, `api`, `robots`, `rating`
+* **label** — welcher Ausschnitt, etwa `super-e-bike-sale`
+
+**Gesucht wird nur im passenden Fach.** Ein Eintrag unter `fahrrad24/listing`
+ist kein Treffer für `fahrrad24/product` und keiner für `upway/listing`. Das ist
+nicht bloß Ordnung: Ein Eintrag wird nie in einem Kontext bedient, für den er
+nicht geholt wurde.
+
+Der Kontext ist **thread-lokal**, und das ist keine Feinheit — der Runner
+scrapt bis zu fünf Shops gleichzeitig über *einen* Fetcher. Ein gemeinsamer
+Zustand würde Einträge unter dem falschen Shop ablegen.
+
+Jeder Eintrag enthält seine Merkmale als Kopfzeile, der Cache beschreibt sich
+also selbst — es gibt keinen zweiten Index, der mit dem Dateibestand
+auseinanderlaufen könnte.
+
+```bash
+python cache_tool.py                          # Übersicht nach Shop und Typ
+python cache_tool.py --kind product           # nur Produktseiten
+python cache_tool.py --list --shop upway      # einzelne Einträge
+python cache_tool.py --drop --shop fahrrad24  # gezielt verwerfen
+python cache_tool.py --drop-expired           # nur Abgelaufenes
+```
+
+Praktischer Nutzen: Ändert sich ein Adapter, lässt sich genau dessen Cache
+verwerfen, statt alles neu zu holen.
+
 Einzige Pflichtabhängigkeit ist `httpx` (`pip install -r requirements.txt`).
 HTML wird mit einem eigenen Mini-DOM auf Basis der Standardbibliothek geparst.
 `playwright` ist optional und nur für `--render` nötig (siehe unten).

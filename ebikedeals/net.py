@@ -21,11 +21,14 @@ import random
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+from .cachetags import LISTING, CacheTags, derive
 
 #: Kompressionsstufe fuer Cache-Eintraege, siehe Modul-Docstring.
 CACHE_PRESET = 1
@@ -111,6 +114,8 @@ class Fetcher:
         self.cache_ttl = cache_ttl
         self._last_hit: dict[str, float] = {}
         self._lock = threading.Lock()
+        #: Aktueller Kategorie-Kontext, pro Thread getrennt (siehe scope()).
+        self._scope = threading.local()
         self.timeout = timeout
         self.allow_curl_fallback = allow_curl_fallback and _curl_available()
         self.curl_hosts: set[str] = set()
@@ -122,64 +127,161 @@ class Fetcher:
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # -- Kategorisierung --------------------------------------------------
+    @contextmanager
+    def scope(self, shop: str, kind: str = LISTING, label: str = ""):
+        """Kontext, unter dem die naechsten Abrufe abgelegt und gesucht werden.
+
+        Thread-lokal, und das ist keine Feinheit: Der Runner scrapt bis zu fuenf
+        Shops gleichzeitig ueber *einen* Fetcher. Ein gemeinsamer Scope wuerde
+        zwischen den Threads auslaufen und Eintraege unter dem falschen Shop
+        ablegen.
+        """
+        previous = getattr(self._scope, "tags", None)
+        self._scope.tags = CacheTags(shop=shop, kind=kind, label=label)
+        try:
+            yield
+        finally:
+            self._scope.tags = previous
+
+    def _tags_for(self, url: str, override: CacheTags | None = None) -> CacheTags:
+        if override is not None:
+            return override
+        current = getattr(self._scope, "tags", None)
+        if current is not None:
+            # Das Label kommt aus der URL, der Rest aus dem gesetzten Kontext -
+            # so bleiben verschiedene Kategorien eines Shops unterscheidbar,
+            # ohne dass jeder Aufrufer sie einzeln benennen muss.
+            derived = derive(url, shop=current.shop, kind=current.kind)
+            return CacheTags(current.shop, current.kind, current.label or derived.label)
+        return derive(url)
+
     # -- cache ------------------------------------------------------------
-    def _cache_path(self, url: str) -> Path | None:
+    def _cache_path(self, url: str, tags: CacheTags) -> Path | None:
         if not self.cache_dir:
             return None
         h = hashlib.sha256(url.encode()).hexdigest()[:24]
-        return self.cache_dir / f"{h}.xz"
+        return self.cache_dir.joinpath(*tags.parts) / f"{h}.xz"
 
-    def _cache_read(self, url: str) -> str | None:
-        p = self._cache_path(url)
+    def _cache_read(self, url: str, tags: CacheTags) -> str | None:
+        p = self._cache_path(url, tags)
         if p and p.exists() and (time.time() - p.stat().st_mtime) < self.cache_ttl:
             try:
-                return lzma.decompress(p.read_bytes()).decode("utf-8")
-            except (OSError, lzma.LZMAError, UnicodeDecodeError):
+                _, body = _split_entry(lzma.decompress(p.read_bytes()))
+                return body
+            except (OSError, lzma.LZMAError, UnicodeDecodeError, ValueError):
                 # Abgebrochener Schreibvorgang o. ae. - Eintrag ist wertlos,
                 # aber kein Grund, den Lauf zu beenden.
                 return None
         return None
 
-    def _cache_write(self, url: str, body: str) -> None:
-        p = self._cache_path(url)
+    def _cache_write(self, url: str, body: str, tags: CacheTags) -> None:
+        p = self._cache_path(url, tags)
         if not p:
             return
         try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # Kopfzeile im Eintrag: Der Cache beschreibt sich damit selbst und
+            # laesst sich durchsuchen, ohne einen zweiten Index zu pflegen,
+            # der mit dem Dateibestand auseinanderlaufen koennte.
+            header = json.dumps(
+                {"url": url, "ts": int(time.time()), **tags.as_dict()},
+                ensure_ascii=False,
+            )
+            payload = (header + "\n" + body).encode("utf-8")
             # Erst daneben schreiben, dann umbenennen: ein abgebrochener Lauf
             # hinterlaesst so keine halbe Datei, die spaeter als gueltiger
             # Cache-Treffer gelesen wuerde.
             tmp = p.with_suffix(".tmp")
-            tmp.write_bytes(lzma.compress(body.encode("utf-8"), preset=CACHE_PRESET))
+            tmp.write_bytes(lzma.compress(payload, preset=CACHE_PRESET))
             tmp.replace(p)
         except OSError:
             pass
 
-    def prune_cache(self) -> tuple[int, int]:
-        """Abgelaufene und altformatige Eintraege loeschen.
+    # -- Abfragen und Aufraeumen ------------------------------------------
+    def cache_entries(
+        self, shop: str | None = None, kind: str | None = None,
+        label: str | None = None, include_expired: bool = True,
+    ) -> list[dict]:
+        """Eintraege auflisten, gefiltert nach Merkmalen (None heisst egal)."""
+        if not self.cache_dir or not self.cache_dir.exists():
+            return []
+        now = time.time()
+        found: list[dict] = []
+        for path in self.cache_dir.rglob("*.xz"):
+            try:
+                rel = path.relative_to(self.cache_dir).parts
+                tags = CacheTags(shop=rel[0], kind=rel[1]) if len(rel) >= 3 else CacheTags()
+                header = {}
+                try:
+                    raw = lzma.decompress(path.read_bytes())
+                    header, _ = _split_entry(raw, body=False)
+                except (lzma.LZMAError, ValueError, UnicodeDecodeError):
+                    pass
+                tags = CacheTags(
+                    shop=header.get("shop", tags.shop),
+                    kind=header.get("kind", tags.kind),
+                    label=header.get("label", ""),
+                )
+                if not tags.matches(shop=shop, kind=kind, label=label):
+                    continue
+                age = now - path.stat().st_mtime
+                if not include_expired and age >= self.cache_ttl:
+                    continue
+                found.append({
+                    "path": path, "bytes": path.stat().st_size, "age": age,
+                    "expired": age >= self.cache_ttl,
+                    "url": header.get("url", ""), **tags.as_dict(),
+                })
+            except OSError:
+                continue
+        return found
 
-        Bisher hat nichts den Cache aufgeraeumt - er wuchs unbegrenzt weiter
-        (350 MB nach wenigen Tagen). Abgelaufene Eintraege werden ohnehin nie
-        wieder gelesen, sie zu behalten kostet nur Platz. Die unkomprimierten
-        `.cache`-Dateien aus der Zeit vor der Kompression fallen hier ebenfalls
-        weg.
+    def prune_cache(
+        self, shop: str | None = None, kind: str | None = None,
+        expired_only: bool = True,
+    ) -> tuple[int, int]:
+        """Eintraege loeschen - standardmaessig nur abgelaufene.
+
+        Bisher hat nichts den Cache aufgeraeumt, er wuchs unbegrenzt weiter
+        (350 MB nach wenigen Tagen). Mit den Merkmalen laesst sich das jetzt
+        auch gezielt: nur ein Shop, nur Produktseiten.
 
         Rueckgabe: (geloeschte Dateien, freigegebene Bytes)
         """
         if not self.cache_dir or not self.cache_dir.exists():
             return (0, 0)
         removed = freed = 0
-        now = time.time()
-        for entry in list(self.cache_dir.iterdir()):
-            if not entry.is_file():
+
+        for entry in self.cache_entries(shop=shop, kind=kind):
+            if expired_only and not entry["expired"]:
                 continue
-            expired = entry.suffix == ".xz" and (now - entry.stat().st_mtime) >= self.cache_ttl
-            legacy = entry.suffix in (".cache", ".tmp")
-            if expired or legacy:
+            try:
+                entry["path"].unlink()
+                removed += 1
+                freed += entry["bytes"]
+            except OSError:
+                pass
+
+        # Reste aus der Zeit vor der Kategorisierung: flache .xz-Dateien direkt
+        # im Wurzelverzeichnis, unkomprimierte .cache-Dateien, halbe .tmp.
+        if shop is None and kind is None:
+            for stale in list(self.cache_dir.glob("*.xz")) + \
+                    list(self.cache_dir.rglob("*.cache")) + \
+                    list(self.cache_dir.rglob("*.tmp")):
                 try:
-                    size = entry.stat().st_size
-                    entry.unlink()
+                    size = stale.stat().st_size
+                    stale.unlink()
                     removed += 1
                     freed += size
+                except OSError:
+                    pass
+
+        # Leere Faecher hinterlassen nur Verwirrung.
+        for d in sorted(self.cache_dir.rglob("*"), key=lambda p: -len(p.parts)):
+            if d.is_dir():
+                try:
+                    d.rmdir()
                 except OSError:
                     pass
         return (removed, freed)
@@ -195,7 +297,8 @@ class Fetcher:
             self._last_hit[host] = time.time()
 
     # -- requests ---------------------------------------------------------
-    def get(self, url: str, *, headers: dict | None = None, use_cache: bool = True) -> str:
+    def get(self, url: str, *, headers: dict | None = None, use_cache: bool = True,
+            tags: CacheTags | None = None) -> str:
         # robots.txt is evaluated for every URL, not just the entry point -
         # some shops allow a listing path but disallow its paginated variants.
         if self.robots is not None and not url.rstrip("/").endswith("/robots.txt"):
@@ -203,8 +306,9 @@ class Fetcher:
             if not verdict.allowed:
                 raise Disallowed(f"robots.txt: {verdict.reason}")
 
+        entry_tags = self._tags_for(url, tags)
         if use_cache:
-            cached = self._cache_read(url)
+            cached = self._cache_read(url, entry_tags)
             if cached is not None:
                 return cached
 
@@ -212,7 +316,7 @@ class Fetcher:
         if host in self.curl_hosts:
             body = self._curl_get(url)
             if use_cache:
-                self._cache_write(url, body)
+                self._cache_write(url, body, entry_tags)
             return body
 
         last_exc: Exception | None = None
@@ -244,7 +348,7 @@ class Fetcher:
                     if body and not _is_bot_interstitial(body):
                         self.curl_hosts.add(host)
                         if use_cache:
-                            self._cache_write(url, body)
+                            self._cache_write(url, body, entry_tags)
                         return body
                 raise Blocked(f"HTTP {r.status_code} - Zugriff verweigert (Bot-Schutz)")
             if r.status_code == 404:
@@ -275,16 +379,18 @@ class Fetcher:
             if _is_bot_interstitial(body):
                 raise Blocked("Bot-Schutz-Interstitial (Akamai/JS-Challenge)")
             if use_cache:
-                self._cache_write(url, body)
+                self._cache_write(url, body, entry_tags)
             return body
 
         raise last_exc or RuntimeError(f"Konnte {url} nicht laden")
 
-    def get_json(self, url: str, *, use_cache: bool = True) -> Any:
+    def get_json(self, url: str, *, use_cache: bool = True,
+                 tags: CacheTags | None = None) -> Any:
         body = self.get(
             url,
             headers={"Accept": "application/json,text/plain,*/*"},
             use_cache=use_cache,
+            tags=tags,
         )
         return json.loads(body)
 
@@ -307,6 +413,17 @@ class Fetcher:
 
     def close(self) -> None:
         self.client.close()
+
+
+def _split_entry(raw: bytes, body: bool = True) -> tuple[dict, str]:
+    """Kopfzeile und Inhalt eines Cache-Eintrags trennen."""
+    head, sep, rest = raw.partition(b"\n")
+    if not sep:
+        raise ValueError("Eintrag ohne Kopfzeile")
+    header = json.loads(head.decode("utf-8"))
+    if not isinstance(header, dict) or "url" not in header:
+        raise ValueError("Kopfzeile unbrauchbar")
+    return header, (rest.decode("utf-8") if body else "")
 
 
 def _curl_available() -> bool:

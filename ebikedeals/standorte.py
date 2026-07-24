@@ -34,6 +34,11 @@ def _laden(pfad: str = STANDORTE_DATEI) -> dict:
         return {"filialen": {}, "shops": {}}
 
 
+def bezugsorte() -> list[dict]:
+    """Staedte, die Nutzern als Standortangabe dienen."""
+    return sorted(_laden().get("bezugsorte", {}).values(), key=lambda e: e["ort"])
+
+
 def filiale(branch_id: str | int) -> dict | None:
     return _laden().get("filialen", {}).get(str(branch_id))
 

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .fit import estimate_body_height
-from .standorte import alle_orte, orte_fuer, _laden
+from .standorte import alle_orte, bezugsorte, orte_fuer
 from .model import Offer
 from .runner import RunReport
 
@@ -409,9 +409,8 @@ def _render_html(report: RunReport) -> str:
 
     # Standortauswahl: Orte mit Angeboten zuerst, danach die Bezugsstädte für
     # alle, in deren Nähe kein Shop sitzt.
-    daten = _laden()
     mit_angebot = {o["ort"] for off in offers for o in orte_fuer(off.shop, off.branches)}
-    bezug = daten.get("bezugsorte", {})
+    bezug = {e["ort"]: e for e in bezugsorte()}
     ort_options = "".join(
         f'<option value="{x["lat"]:.4f},{x["lon"]:.4f}">{_esc(x["ort"])}'
         f'{" ·" if x["ort"] in mit_angebot else ""}</option>'

@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 
 from ebikedeals.adapters import ADAPTERS, BY_KEY
+from ebikedeals.cachetags import LISTING
 from ebikedeals.model import looks_like_size
 from ebikedeals.net import Fetcher
 from ebikedeals.render import Renderer
@@ -33,8 +34,12 @@ def audit(adapter, fetcher) -> list[str]:
     problems: list[str] = []
     offers = []
     try:
-        for o in adapter.scrape(fetcher, PAGES):
-            offers.append(o)
+        # Derselbe Cache-Kontext wie im Runner. Ohne ihn landeten die Abrufe im
+        # abgeleiteten Fach (`upway.de/api` statt `upway/listing`), Audit und
+        # Lauf teilten sich nichts und fragten die Shops doppelt.
+        with fetcher.scope(adapter.key, LISTING):
+            for o in adapter.scrape(fetcher, PAGES):
+                offers.append(o)
     except Exception as e:
         return [f"scrape schlug fehl: {type(e).__name__}: {e}"]
 

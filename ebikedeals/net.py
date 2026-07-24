@@ -39,6 +39,16 @@ RATE_LIMIT_MAX = 90.0
 #: So viele Zusatzversuche darf ein Rate-Limit ueber das normale Budget hinaus
 #: kosten, bevor der Shop als gescheitert gilt.
 MAX_RATE_LIMIT_RETRIES = 4
+#: Geduld je Host, in Sekunden. Ist sie aufgebraucht, gilt 429 als dauerhafte
+#: Abweisung statt als Bitte um Geduld.
+#:
+#: Der Unterschied ist praktisch wichtig: Ein echtes Rate-Limit loest sich durch
+#: Warten. Wird dagegen eine ganze IP abgelehnt - Shopify signalisiert das
+#: ebenfalls mit 429 - hilft kein Warten. Auf einem GitHub-Runner hat genau das
+#: 41 Minuten Laufzeit gekostet und am Ergebnis nichts geaendert. Nach dem
+#: Budget wird deshalb schnell aufgegeben, damit der Fehlschlag sichtbar wird,
+#: statt sich in Wartezeit zu verstecken.
+RATE_LIMIT_BUDGET_PER_HOST = 120.0
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:
@@ -116,6 +126,8 @@ class Fetcher:
         self._lock = threading.Lock()
         #: Aktueller Kategorie-Kontext, pro Thread getrennt (siehe scope()).
         self._scope = threading.local()
+        #: Bereits mit Warten auf Rate-Limits verbrachte Zeit je Host.
+        self._rate_limit_spent: dict[str, float] = {}
         self.timeout = timeout
         self.allow_curl_fallback = allow_curl_fallback and _curl_available()
         self.curl_hosts: set[str] = set()
@@ -362,10 +374,21 @@ class Fetcher:
                 last_exc = httpx.HTTPStatusError(
                     "HTTP 429", request=r.request, response=r
                 )
+                with self._lock:
+                    verbraucht = self._rate_limit_spent.get(host, 0.0)
+                if verbraucht >= RATE_LIMIT_BUDGET_PER_HOST:
+                    raise Blocked(
+                        "HTTP 429 dauerhaft - der Host weist diese IP ab, "
+                        "nicht nur diese Anfrage"
+                    )
                 wait = _retry_after_seconds(r)
                 if wait is None:
                     wait = min(RATE_LIMIT_BASE * (2 ** attempt), RATE_LIMIT_MAX)
-                time.sleep(min(wait, RATE_LIMIT_MAX) + random.uniform(0, 1.0))
+                wait = min(wait, RATE_LIMIT_MAX,
+                           RATE_LIMIT_BUDGET_PER_HOST - verbraucht) + random.uniform(0, 1.0)
+                time.sleep(max(wait, 0.5))
+                with self._lock:
+                    self._rate_limit_spent[host] = verbraucht + wait
                 rate_limit_hits += 1
                 continue
             if r.status_code in (500, 502, 503, 504):

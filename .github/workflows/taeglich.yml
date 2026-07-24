@@ -1,0 +1,142 @@
+name: Tägliche Aktualisierung
+
+# Läuft einmal täglich und schreibt den Preisverlauf zurück ins Repository.
+# Das Zurückschreiben ist der Kern: ein CI-Runner startet jedes Mal mit leerem
+# Dateisystem, ohne die versionierte preise.db wäre an jedem Tag jedes Angebot
+# "neu im Bericht" und der Preisverlauf damit wertlos.
+#
+# Bewusst NICHT actions/cache dafür: GitHub räumt Caches nach 7 Tagen ohne
+# Zugriff und unter Speicherdruck ab. Ein stiller Datenverlust wäre genau die
+# Fehlerklasse, die der Preisverlauf aufdecken soll.
+
+on:
+  schedule:
+    # 04:00 UTC = 06:00 deutsche Sommerzeit, 05:00 Winterzeit.
+    # GitHub verschiebt geplante Läufe unter Last, teils um 30+ Minuten.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      render:
+        description: "lucky-bike per Headless-Chromium mitscannen"
+        type: boolean
+        default: true
+      min_discount:
+        description: "Mindestrabatt in Prozent"
+        type: string
+        default: "50"
+
+# Zwei gleichzeitige Läufe würden sich beim Zurückschreiben der Historie
+# gegenseitig überschreiben.
+concurrency:
+  group: taeglich
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  aktualisieren:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Playwright installieren
+        if: inputs.render != false
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Angebote abrufen
+        id: scrape
+        # Ein Teilausfall soll nicht den ganzen Job beenden - was eingesammelt
+        # wurde, wird gleich danach auf Plausibilität geprüft.
+        continue-on-error: true
+        run: |
+          python run.py \
+            --min-discount "${{ inputs.min_discount || '50' }}" \
+            --max-pages 8 \
+            ${{ inputs.render != false && '--render' || '' }} \
+            --json deals.json \
+            --quiet
+          echo "--- Zusammenfassung ---"
+          python -c "import json;d=json.load(open('deals.json',encoding='utf-8'));print(f\"{len(d['offers'])} Treffer aus {d['total_scanned']} geprueften Angeboten\")"
+
+      - name: Ergebnis prüfen
+        run: python ci_check.py
+
+      - name: Preisverlauf zurückschreiben
+        run: |
+          if git diff --quiet -- preise.db; then
+            echo "preise.db unverändert - nichts zu committen"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add preise.db
+          git commit -m "Preisverlauf $(date -u +%Y-%m-%d): $(python -c "import json;print(len(json.load(open('deals.json',encoding='utf-8'))['offers']))") Angebote"
+          # Konkurrierende Commits (etwa ein lokaler Push) sind selten, aber
+          # ein Rebase ist billiger als ein fehlgeschlagener Job.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Bericht als Artefakt ablegen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bericht-${{ github.run_number }}
+          path: |
+            bericht.html
+            deals.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Fehlschlag des Abrufs melden
+        if: steps.scrape.outcome == 'failure'
+        run: |
+          echo "::warning::Der Abruf endete mit einem Fehler. Die Plausibilitätsprüfung lief trotzdem durch, das Ergebnis ist also brauchbar - aber ein Blick ins Log lohnt sich."
+
+  # Optional: Bericht als Webseite veröffentlichen.
+  # Voraussetzung: Settings → Pages → Source = "GitHub Actions".
+  # Achtung: Bei privaten Repositories brauchen GitHub Pages einen bezahlten
+  # Plan. Deshalb hängt der Job an einer Repository-Variable und ist
+  # standardmäßig aus (Settings → Variables → PUBLISH_PAGES = true).
+  veroeffentlichen:
+    needs: aktualisieren
+    if: vars.PUBLISH_PAGES == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Bericht holen
+        uses: actions/download-artifact@v4
+        with:
+          name: bericht-${{ github.run_number }}
+          path: site
+
+      - name: Als Startseite ablegen
+        run: cp site/bericht.html site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

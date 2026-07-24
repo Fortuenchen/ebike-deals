@@ -149,6 +149,61 @@ gekennzeichnet.
 Die Noten werden in `bewertungen.json` zwischengespeichert und wöchentlich
 erneuert (`--ratings`, `--no-ratings`).
 
+## Täglicher Lauf über GitHub Actions
+
+`.github/workflows/taeglich.yml` startet den Scanner jeden Morgen um 04:00 UTC
+(06:00 deutsche Sommerzeit) und lässt sich unter *Actions → Tägliche
+Aktualisierung → Run workflow* auch von Hand auslösen — dort sind Mindestrabatt
+und `--render` einstellbar.
+
+**Der Preisverlauf wird ins Repository zurückgeschrieben.** Das ist keine
+Bequemlichkeit, sondern Bedingung: Ein CI-Runner startet mit leerem Dateisystem,
+ohne versionierte `preise.db` wäre an jedem Tag jedes Angebot „neu im Bericht“.
+Deshalb ist die Datei bewusst *nicht* in `.gitignore` — und deshalb kommt auch
+kein `actions/cache` in Frage, den GitHub nach sieben Tagen ohne Zugriff
+abräumen darf.
+
+*Fürs lokale Arbeiten:* vor einem eigenen Lauf `git pull`, sonst kollidiert der
+lokale Stand mit dem Bot-Commit. SQLite-Dateien lassen sich nicht mergen.
+
+### Plausibilitätsprüfung
+
+Vor dem Zurückschreiben läuft `ci_check.py`. Ein Scraper aus einem Rechenzentrum
+wird irgendwann von einem Teil der Shops abgewiesen — das Ergebnis ist dann kein
+Absturz, sondern ein *kleinerer* Bericht, der aussieht wie ein ruhiger Tag. Der
+Check vergleicht deshalb gegen den letzten Tag in `preise.db` und bricht ab bei:
+
+* weniger als 50 % der Angebote des Vortages,
+* mehr als 3 Shops mit Fehler,
+* fehlender `deals.json`.
+
+Der Vergleich ist selbstkalibrierend: keine feste Erwartung, nur „deutlich
+weniger als gestern ist verdächtig“. Bewusst übersprungene Shops (bike24) zählen
+nicht als Fehler.
+
+### Ergebnisse
+
+Bericht und Rohdaten liegen 30 Tage als Artefakt am jeweiligen Lauf
+(*Actions → Lauf → Artifacts*).
+
+Wer den Bericht lieber als Webseite hätte: den zweiten Job aktiviert die
+Repository-Variable `PUBLISH_PAGES = true` (Settings → Variables), zusätzlich
+muss unter Settings → Pages die Quelle auf „GitHub Actions“ stehen. **Bei
+privaten Repositories brauchen GitHub Pages einen bezahlten Plan** — deshalb ist
+der Job standardmäßig aus.
+
+### Was der erste Lauf zeigen wird
+
+Ob die Shops eine GitHub-Runner-IP akzeptieren, ist offen. fahrradlagerverkauf
+weist schon lokal `httpx` ab und braucht den curl-Fallback; aus einem
+Rechenzentrum kann das weitere Shops betreffen. Der Plausibilitätscheck fängt
+den Fall ab, statt stillschweigend eine dünne Historie aufzubauen — nach dem
+ersten Lauf lohnt ein Blick, welche Shops im Log Fehler melden.
+
+Zwei weitere Eigenheiten von GitHub Actions: geplante Läufe verschieben sich
+unter Last um bis zu 30 Minuten, und in Repositories ohne Aktivität werden sie
+nach 60 Tagen automatisch abgeschaltet.
+
 ## Preisverlauf
 
 Jeder Lauf schreibt Preis und UVP je Angebot in eine SQLite-Datei

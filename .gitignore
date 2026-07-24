@@ -7,9 +7,13 @@ audit.log
 bericht.html
 deals.json
 
-# Preisverlauf: maschinenlokale Datensammlung, kein Quellcode.
-# Wer die Historie mitversionieren will, nimmt die Zeile raus.
-preise.db
+# preise.db ist bewusst NICHT ignoriert: Der tägliche Workflow läuft auf einem
+# frischen Runner, die Historie überlebt nur als versionierte Datei. Ohne sie
+# wäre an jedem Tag jedes Angebot "neu im Bericht".
+#
+# Folge fürs lokale Arbeiten: vor einem eigenen Lauf `git pull`, sonst gibt es
+# einen Konflikt mit dem Bot-Commit — und SQLite-Dateien lassen sich nicht
+# mergen.
 
 # Bewertungs-Cache (wird wöchentlich neu geholt). Die manuell gepflegte
 # Variante ist dagegen bewusst nicht ignoriert - siehe .beispiel.json.

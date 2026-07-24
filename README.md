@@ -31,6 +31,9 @@ gekostet. Jetzt werden beide gescannt und der Ausverkauft-Filter trennt sie.
 Shops ohne Sale-Filter (jobrad-loop) bekommen ein größeres Seitenbudget
 (`page_budget`).
 
+> **Neu im Projekt?** [CONTEXT.md](CONTEXT.md) fasst Architektur, Adapter,
+> Zugriffswege und die bereits gemachten Fehler auf einer Seite zusammen.
+
 ## Start
 
 ```bash
@@ -505,6 +508,24 @@ ebikedeals/
 
 Hilfsskripte: `smoke.py` (ein Adapter, eine Seite), `verify_links.py` (prüft,
 ob alle gemeldeten Links auflösen), `check_robots.py`.
+
+## Partnerlinks
+
+Ausgeschaltet, solange keine `affiliate.json` existiert — dann bleiben alle
+Links direkt. Vorlage: `affiliate.beispiel.json`.
+
+Gefundene Programme: **Webgains** (fahrrad-xxl 6 %, lucky-bike), **AWIN**
+(B.O.C., radwelt 2 %, fahrradlagerverkauf), **Shopify Collabs** (fahrrad.de).
+
+Sobald ein Link umgeschrieben wird, blendet der Bericht die Werbekennzeichnung
+ein. Das ist an das Ergebnis gekoppelt, nicht an eine Einstellung — ein
+vergessener Hinweis ist abmahnfähig (§ 5a Abs. 4 UWG), und das darf nicht davon
+abhängen, ob jemand daran denkt.
+
+`affiliate.json` steht in `.gitignore`. Die Partner-ID ist kein Passwort, aber
+Ihre Identität gegenüber dem Netzwerk — in einem öffentlichen Repository hat sie
+nichts verloren. Für den automatischen Lauf gibt es das Secret
+`EBIKE_AFFILIATE`.
 
 ## Lizenz
 

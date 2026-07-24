@@ -22,3 +22,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Partner-IDs gehoeren nicht in ein oeffentliches Repository.
+# Vorlage: affiliate.beispiel.json
+affiliate.json

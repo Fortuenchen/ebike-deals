@@ -10,6 +10,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from .affiliate import Partnerlinks
 from .fit import estimate_body_height
 from .standorte import alle_orte, bezugsorte, orte_fuer
 from .model import Offer
@@ -120,8 +121,13 @@ def _rating_badges(entries, compact: bool = False) -> str:
     return "".join(out)
 
 
-def _offer_card(o: Offer, ratings=None) -> str:
+def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> str:
     d = o.effective_discount_pct or 0
+    # Partnerlink nur fuer den Hauptlink. Die Groessenlinks von bikeexchange
+    # bleiben direkt: Sie zeigen auf Varianten derselben Seite, und ein
+    # zweiter Weiterleitungsschritt je Groesse brachte nichts als Umwege.
+    ziel, ist_partner = (partner.link(o.shop, o.url) if partner else (o.url, False))
+    partner_mark = ' data-partner="1"' if ist_partner else ""
     if o.size_links:
         sizes = " ".join(
             f'<a class="size" href="{_esc(link)}" target="_blank" rel="noopener">{_esc(s)}</a>'
@@ -200,7 +206,7 @@ def _offer_card(o: Offer, ratings=None) -> str:
       <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}</div>
       <div class="body">
         <p class="shop">{_esc(o.shop)} {avail}{_rating_badges(ratings, compact=True)}</p>
-        <h3><a href="{_esc(o.url)}" target="_blank" rel="noopener">{_esc(o.title)}</a></h3>
+        <h3><a href="{_esc(ziel)}" target="_blank" rel="noopener"{partner_mark}>{_esc(o.title)}</a></h3>
         <p class="prices">
           <span class="now">{_esc(_eur(o.price))}</span>
           <span class="was">{_esc(_eur(o.list_price))}</span>
@@ -211,7 +217,7 @@ def _offer_card(o: Offer, ratings=None) -> str:
         {_history_block(o)}
         <p class="sizes"><span class="lbl">Größen/Rahmenhöhen:</span> {sizes}</p>
         {note}
-        <a class="cta" href="{_esc(o.url)}" target="_blank" rel="noopener">Zum Angebot →</a>
+        <a class="cta" href="{_esc(ziel)}" target="_blank" rel="noopener"{partner_mark}>Zum Angebot →{" *" if ist_partner else ""}</a>
       </div>
     </article>"""
 
@@ -433,9 +439,27 @@ def _render_html(report: RunReport) -> str:
             f'{hs["urls"]} beobachtete Angebote</p>'
         )
 
+    partner = Partnerlinks()
     cards = "\n".join(
-        _offer_card(o, report.ratings.get(o.shop)) for o in offers
+        _offer_card(o, report.ratings.get(o.shop), partner) for o in offers
     ) or '<p class="empty">Keine Angebote über der Rabattschwelle gefunden.</p>'
+
+    # Pflichtangabe, sobald tatsächlich Partnerlinks im Bericht stehen. Bewusst
+    # an das Ergebnis gekoppelt und nicht an eine Einstellung: So kann der
+    # Hinweis nicht fehlen, wenn jemand ihn abzuschalten versucht.
+    if partner.umgeschrieben:
+        netze = ", ".join(partner.netzwerke())
+        werbehinweis = (
+            '<p class="werbung"><strong>Werbehinweis:</strong> Mit <em>*</em> '
+            f"markierte Links ({partner.umgeschrieben} von {len(offers)}, "
+            f"{len(partner.shops)} Shops) sind Partnerlinks. Kaufen Sie darüber, "
+            "erhält der Betreiber dieser Seite eine Provision — der Preis für Sie "
+            "ändert sich dadurch nicht."
+            + (f" Vermittelt über {_esc(netze)}." if netze else "")
+            + "</p>"
+        )
+    else:
+        werbehinweis = ""
 
     return f"""<!doctype html>
 <html lang="de">
@@ -502,6 +526,10 @@ th.num {{ text-align:right; }}
 .tablenote {{ margin:10px 2px 2px; font-size:.78rem; color:var(--muted); }}
 .tablenote code {{ background:var(--chip); padding:1px 5px; border-radius:4px; }}
 .muted {{ color:var(--muted); }}
+.werbung {{ margin:0 0 16px; padding:9px 13px; font-size:.82rem; color:var(--fg);
+  background:var(--chip); border:1px solid var(--line); border-left:3px solid var(--accent);
+  border-radius:8px; }}
+.werbung strong {{ font-weight:700; }}
 td.ratings {{ white-space:nowrap; }}
 .rating {{ display:inline-block; background:var(--chip); border:1px solid var(--line);
   border-radius:5px; padding:1px 7px; margin:0 4px 2px 0; font-size:.76rem;
@@ -576,6 +604,7 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   <h1>E-Bike-Deals ab {cfg.min_discount:.0f}&nbsp;% Rabatt</h1>
   <p class="sub">{len(offers)} Treffer aus {report.total_scanned} geprüften Angeboten ·
      Stand {generated}</p>
+  {werbehinweis}
   {history_note}
 
   <details>

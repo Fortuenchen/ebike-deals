@@ -1,12 +1,9 @@
 name: Tägliche Aktualisierung
 
 # Läuft einmal täglich und schreibt den Preisverlauf zurück ins Repository.
-# Das Zurückschreiben ist der Kern: ein CI-Runner startet jedes Mal mit leerem
-# Dateisystem, ohne versionierte Historie wäre an jedem Tag jedes Angebot
-# "neu im Bericht" und der Preisverlauf damit wertlos.
 #
 # Versioniert wird historie/YYYY-MM-DD.jsonl.xz — je Lauftag eine komprimierte,
-# danach unveränderliche Datei (~55 KB). preise.db entsteht daraus lokal neu.
+# danach unveränderliche Datei (~52 KB). preise.db entsteht daraus lokal neu.
 # Die SQLite-Datei selbst täglich zu committen wäre naheliegend, aber teuer:
 # sie wächst, und Git legt bei jedem Commit eine Kopie der ganzen Datei ab —
 # nach einem Jahr mehrere Gigabyte statt rund 23 MB.
@@ -14,6 +11,12 @@ name: Tägliche Aktualisierung
 # Bewusst NICHT actions/cache dafür: GitHub räumt Caches nach 7 Tagen ohne
 # Zugriff und unter Speicherdruck ab. Ein stiller Datenverlust wäre genau die
 # Fehlerklasse, die der Preisverlauf aufdecken soll.
+#
+# WO DER LAUF STATTFINDET entscheidet die Repository-Variable RUNNER_LABEL.
+# Standard ist ubuntu-latest. Dort weisen allerdings acht der 21 Shops die
+# Runner-IP ab (fünf mit 429, drei mit 403) — der Lauf liefert dann rund 940
+# statt 1700 Angebote und wird von der Plausibilitätsprüfung verworfen.
+# `runner_einrichten.ps1` setzt die Variable auf self-hosted.
 
 on:
   schedule:
@@ -42,8 +45,15 @@ permissions:
 
 jobs:
   aktualisieren:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 120
+
+    defaults:
+      run:
+        # Auf einem selbst gehosteten Windows-Runner wäre die Vorgabe pwsh.
+        # Bash ist dort über Git für Windows vorhanden, und so bleiben die
+        # Schritte auf beiden Runner-Arten identisch.
+        shell: bash
 
     steps:
       - name: Repository auschecken
@@ -53,7 +63,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Abhängigkeiten installieren
         run: |
@@ -64,7 +73,14 @@ jobs:
         if: inputs.render != false
         run: |
           pip install playwright
-          python -m playwright install --with-deps chromium
+          # --with-deps installiert Systempakete und braucht sudo; das gibt es
+          # nur auf den GitHub-Runnern. Auf dem eigenen Rechner ist Chromium
+          # nach dem ersten Mal ohnehin vorhanden.
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            python -m playwright install --with-deps chromium
+          else
+            python -m playwright install chromium
+          fi
 
       - name: Angebote abrufen
         id: scrape
@@ -110,16 +126,21 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      - name: Arbeitsverzeichnis aufräumen
+        if: always()
+        # Ein selbst gehosteter Runner behält sein Verzeichnis zwischen den
+        # Läufen. Ohne dieses Aufräumen bliebe der erzeugte Bericht liegen und
+        # eine spätere Prüfung könnte alte Daten für neue halten.
+        run: rm -f bericht.html deals.json
+
       - name: Fehlschlag des Abrufs melden
         if: steps.scrape.outcome == 'failure'
         run: |
           echo "::warning::Der Abruf endete mit einem Fehler. Die Plausibilitätsprüfung lief trotzdem durch, das Ergebnis ist also brauchbar - aber ein Blick ins Log lohnt sich."
 
   # Optional: Bericht als Webseite veröffentlichen.
-  # Voraussetzung: Settings → Pages → Source = "GitHub Actions".
-  # Achtung: Bei privaten Repositories brauchen GitHub Pages einen bezahlten
-  # Plan. Deshalb hängt der Job an einer Repository-Variable und ist
-  # standardmäßig aus (Settings → Variables → PUBLISH_PAGES = true).
+  # Voraussetzung: Settings → Pages → Source = "GitHub Actions" und die
+  # Repository-Variable PUBLISH_PAGES = true.
   veroeffentlichen:
     needs: aktualisieren
     if: vars.PUBLISH_PAGES == 'true'

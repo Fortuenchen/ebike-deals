@@ -1,0 +1,43 @@
+{
+  "_hinweis": [
+    "Vorlage für Partnerlinks. Zum Aktivieren umbenennen in affiliate.json.",
+    "",
+    "WICHTIG: affiliate.json steht in .gitignore und gehört dort auch hin.",
+    "Dieses Repository ist öffentlich. Die Partner-ID ist zwar kein Passwort",
+    "- sie steht in jedem ausgehenden Link -, aber sie ist Ihre Identität",
+    "gegenüber dem Netzwerk. Wer sie kennt, kann sie in fremde Seiten einbauen",
+    "und Ihr Konto durch auffälliges Klickverhalten sperren lassen.",
+    "",
+    "{url} ist der Platzhalter für die Ziel-URL und wird kodiert eingesetzt.",
+    "Ohne {url} wird der Eintrag ignoriert - sonst landeten alle Links auf",
+    "der Startseite statt beim Produkt.",
+    "",
+    "Sobald mindestens ein Link umgeschrieben wird, blendet der Bericht die",
+    "Werbekennzeichnung ein. Das ist Pflicht (§ 5a Abs. 4 UWG) und deshalb",
+    "nicht abschaltbar.",
+    "",
+    "Die IDs unten sind Platzhalter - ersetzen Sie sie durch Ihre eigenen,",
+    "nachdem Sie im jeweiligen Programm angenommen wurden."
+  ],
+
+  "fahrradxxl": {
+    "netzwerk": "Webgains",
+    "template": "https://track.webgains.com/click.html?wgcampaignid=IHRE_CAMPAIGN_ID&wgprogramid=IHRE_PROGRAM_ID&wgtarget={url}"
+  },
+  "luckybike": {
+    "netzwerk": "Webgains",
+    "template": "https://track.webgains.com/click.html?wgcampaignid=IHRE_CAMPAIGN_ID&wgprogramid=IHRE_PROGRAM_ID&wgtarget={url}"
+  },
+  "boc24": {
+    "netzwerk": "AWIN",
+    "template": "https://www.awin1.com/cread.php?awinmid=IHRE_MERCHANT_ID&awinaffid=IHRE_AFFILIATE_ID&ued={url}"
+  },
+  "radwelt": {
+    "netzwerk": "AWIN",
+    "template": "https://www.awin1.com/cread.php?awinmid=IHRE_MERCHANT_ID&awinaffid=IHRE_AFFILIATE_ID&ued={url}"
+  },
+  "lagerverkauf": {
+    "netzwerk": "AWIN",
+    "template": "https://www.awin1.com/cread.php?awinmid=IHRE_MERCHANT_ID&awinaffid=IHRE_AFFILIATE_ID&ued={url}"
+  }
+}

@@ -392,6 +392,22 @@ ebikedeals/
 Hilfsskripte: `smoke.py` (ein Adapter, eine Seite), `verify_links.py` (prüft,
 ob alle gemeldeten Links auflösen), `check_robots.py`.
 
+## Lizenz
+
+[MIT](LICENSE) — Nutzung, Änderung und Weitergabe frei, auch kommerziell.
+
+Zwei Hinweise für alle, die das Projekt forken:
+
+* **Die Adapter sind an fremde Shops gebunden.** Deren Markup ändert sich ohne
+  Vorwarnung. `audit.py` prüft jeden Adapter gegen Plausibilitätsregeln — vor
+  dem Vertrauen in einen Bericht bitte laufen lassen.
+* **`preise.db` enthält abgeschöpfte Preisdaten.** Einzelne Preisbeobachtungen
+  sind Fakten und nicht urheberrechtlich geschützt, aber das EU-weite
+  Datenbankherstellerrecht (§ 87b UrhG) schützt wesentliche Teile fremder
+  Produktdatenbanken. Wer die Datei weiterverwendet oder das Projekt in großem
+  Stil betreibt, sollte das im Blick behalten. Die MIT-Lizenz deckt den Code,
+  nicht die damit erhobenen Fremddaten.
+
 ## Grenzen
 
 * Preise und Verfügbarkeit ändern sich laufend – der Bericht ist eine

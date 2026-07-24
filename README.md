@@ -222,7 +222,46 @@ Historie; dort ist alles „neu im Bericht“.
 
 Gelesen wird immer *vor* dem Schreiben, sonst stünde der heutige Preis schon in
 der Tabelle und jedes Angebot wäre automatisch auf „Tiefstpreis“. Ein zweiter
-Lauf am selben Tag überschreibt den Tageswert, statt die Reihe aufzublähen.
+Lauf am selben Tag aktualisiert den Tageswert, statt die Reihe aufzublähen.
+
+### Speicherformat
+
+Zwei Speicher mit klarer Rollenverteilung:
+
+* **`historie/YYYY-MM-DD.jsonl.xz`** ist die Wahrheit und wird versioniert —
+  eine LZMA-komprimierte Datei je Lauftag (~50 KB für 1.700 Angebote), die sich
+  nach dem Schreiben nie wieder ändert.
+* **`preise.db`** ist nur ein daraus abgeleiteter SQLite-Index für schnelle
+  Abfragen, steht in `.gitignore` und wird beim Start automatisch aus dem Archiv
+  wiederhergestellt, wenn sie fehlt.
+
+Die naheliegende Variante — die SQLite-Datei täglich committen — wäre teuer:
+Sie wächst mit jedem Lauf, und Git legt bei jedem Commit eine Kopie der *ganzen*
+Datei ab. Nach einem Jahr wären das rund 640.000 Zeilen, eine ~220 MB große
+Datei und mehrere Gigabyte Git-Historie. Unveränderliche Tagesdateien kosten
+dieselbe Information in etwa 23 MB pro Jahr.
+
+*Geschrieben wird der Tag immer vollständig aus dem Index*, nicht nur die
+Angebote des laufenden Durchgangs. Sonst hätte ein Teillauf wie
+`--shop denfeld` die Tagesdatei aller Shops durch seine paar Zeilen ersetzt.
+
+## Datensparsamkeit
+
+Der HTTP-Cache liegt LZMA-komprimiert auf der Platte. Shop-HTML ist sehr
+redundant — an 40 echten Cache-Dateien einzeln gemessen:
+
+| Verfahren | Faktor | Komprimieren | Dekomprimieren |
+|---|---|---|---|
+| gzip -6 | 7,9× | 0,45 s | 0,05 s |
+| **LZMA preset 1** | **10,5×** | **0,53 s** | 0,16 s |
+| LZMA preset 3 | 10,9× | 0,86 s | 0,15 s |
+
+Preset 1 ist der Punkt, an dem mehr Aufwand kaum noch etwas bringt: derselbe
+Schreibaufwand wie gzip bei einem Drittel mehr Kompression. `lzma` gehört zur
+Standardbibliothek, es kommt also keine Abhängigkeit dazu.
+
+Zusätzlich räumt jeder Lauf abgelaufene Einträge weg — das tat vorher niemand,
+der Cache wuchs unbegrenzt. Praktisch gemessen: **350 MB → 201 KB**.
 
 Einzige Pflichtabhängigkeit ist `httpx` (`pip install -r requirements.txt`).
 HTML wird mit einem eigenen Mini-DOM auf Basis der Standardbibliothek geparst.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures as cf
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -71,6 +72,14 @@ def run(config: RunConfig) -> RunReport:
     robots = RobotsCache(fetcher)
     if config.respect_robots:
         fetcher.robots = robots
+
+    # Abgelaufene Eintraege raeumen, bevor neue dazukommen - sonst waechst der
+    # Cache unbegrenzt, weil ihn nie jemand aufraeumt.
+    if config.cache_dir:
+        removed, freed = fetcher.prune_cache()
+        if removed:
+            print(f"Cache: {removed} abgelaufene Eintraege entfernt "
+                  f"({freed / 1048576:.0f} MB frei)", file=sys.stderr)
 
     selected = [BY_KEY[k] for k in config.shops] if config.shops else list(ADAPTERS)
     report = RunReport(config=config)

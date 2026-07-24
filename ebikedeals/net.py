@@ -1,17 +1,61 @@
-"""HTTP layer: one polite, retrying, optionally caching client for all adapters."""
+"""HTTP layer: one polite, retrying, optionally caching client for all adapters.
+
+Der Cache liegt LZMA-komprimiert auf der Platte. Shop-HTML ist extrem
+redundant - gemessen an echten Cache-Daten schrumpft es auf ein Zehntel
+(350 MB auf rund 33 MB), und zwar ohne zusaetzliche Abhaengigkeit, weil `lzma`
+zur Standardbibliothek gehoert.
+
+Warum preset=1 und nicht das Maximum: An 40 echten Cache-Dateien einzeln
+gemessen liefert preset 1 den Faktor 10,5 bei derselben Kompressionszeit wie
+gzip -6 (Faktor 7,9). Hoehere Presets bringen kaum mehr (preset 3: 10,9x),
+kosten aber deutlich mehr Zeit. Ein Cache muss vor allem billig zu schreiben
+sein.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import lzma
 import random
 import subprocess
 import threading
 import time
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+#: Kompressionsstufe fuer Cache-Eintraege, siehe Modul-Docstring.
+CACHE_PRESET = 1
+
+#: Wartezeiten bei HTTP 429, falls der Server kein Retry-After mitschickt.
+RATE_LIMIT_BASE = 8.0
+RATE_LIMIT_MAX = 90.0
+#: So viele Zusatzversuche darf ein Rate-Limit ueber das normale Budget hinaus
+#: kosten, bevor der Shop als gescheitert gilt.
+MAX_RATE_LIMIT_RETRIES = 4
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """Retry-After auswerten - entweder Sekunden oder ein HTTP-Datum."""
+    raw = response.headers.get("Retry-After")
+    if not raw:
+        return None
+    raw = raw.strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    try:
+        target = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if target is None:
+        return None
+    delta = target.timestamp() - time.time()
+    return max(0.0, delta)
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -83,24 +127,62 @@ class Fetcher:
         if not self.cache_dir:
             return None
         h = hashlib.sha256(url.encode()).hexdigest()[:24]
-        return self.cache_dir / f"{h}.cache"
+        return self.cache_dir / f"{h}.xz"
 
     def _cache_read(self, url: str) -> str | None:
         p = self._cache_path(url)
         if p and p.exists() and (time.time() - p.stat().st_mtime) < self.cache_ttl:
             try:
-                return p.read_text(encoding="utf-8")
-            except OSError:
+                return lzma.decompress(p.read_bytes()).decode("utf-8")
+            except (OSError, lzma.LZMAError, UnicodeDecodeError):
+                # Abgebrochener Schreibvorgang o. ae. - Eintrag ist wertlos,
+                # aber kein Grund, den Lauf zu beenden.
                 return None
         return None
 
     def _cache_write(self, url: str, body: str) -> None:
         p = self._cache_path(url)
-        if p:
-            try:
-                p.write_text(body, encoding="utf-8")
-            except OSError:
-                pass
+        if not p:
+            return
+        try:
+            # Erst daneben schreiben, dann umbenennen: ein abgebrochener Lauf
+            # hinterlaesst so keine halbe Datei, die spaeter als gueltiger
+            # Cache-Treffer gelesen wuerde.
+            tmp = p.with_suffix(".tmp")
+            tmp.write_bytes(lzma.compress(body.encode("utf-8"), preset=CACHE_PRESET))
+            tmp.replace(p)
+        except OSError:
+            pass
+
+    def prune_cache(self) -> tuple[int, int]:
+        """Abgelaufene und altformatige Eintraege loeschen.
+
+        Bisher hat nichts den Cache aufgeraeumt - er wuchs unbegrenzt weiter
+        (350 MB nach wenigen Tagen). Abgelaufene Eintraege werden ohnehin nie
+        wieder gelesen, sie zu behalten kostet nur Platz. Die unkomprimierten
+        `.cache`-Dateien aus der Zeit vor der Kompression fallen hier ebenfalls
+        weg.
+
+        Rueckgabe: (geloeschte Dateien, freigegebene Bytes)
+        """
+        if not self.cache_dir or not self.cache_dir.exists():
+            return (0, 0)
+        removed = freed = 0
+        now = time.time()
+        for entry in list(self.cache_dir.iterdir()):
+            if not entry.is_file():
+                continue
+            expired = entry.suffix == ".xz" and (now - entry.stat().st_mtime) >= self.cache_ttl
+            legacy = entry.suffix in (".cache", ".tmp")
+            if expired or legacy:
+                try:
+                    size = entry.stat().st_size
+                    entry.unlink()
+                    removed += 1
+                    freed += size
+                except OSError:
+                    pass
+        return (removed, freed)
 
     # -- throttling -------------------------------------------------------
     def _throttle(self, url: str) -> None:
@@ -134,7 +216,13 @@ class Fetcher:
             return body
 
         last_exc: Exception | None = None
-        for attempt in range(self.retries):
+        rate_limit_hits = 0
+        attempt = -1
+        # Ein Rate-Limit verbraucht keinen regulaeren Versuch: Der Server sagt
+        # "spaeter nochmal", nicht "kaputt". Sonst waeren nach drei 429ern alle
+        # Versuche aufgebraucht, obwohl nie ein echter Fehler auftrat.
+        while attempt + 1 < self.retries + min(rate_limit_hits, MAX_RATE_LIMIT_RETRIES):
+            attempt += 1
             self._throttle(url)
             try:
                 r = self.client.get(url, headers=headers)
@@ -161,7 +249,22 @@ class Fetcher:
                 raise Blocked(f"HTTP {r.status_code} - Zugriff verweigert (Bot-Schutz)")
             if r.status_code == 404:
                 raise httpx.HTTPStatusError("404", request=r.request, response=r)
-            if r.status_code in (429, 500, 502, 503, 504):
+            if r.status_code == 429:
+                # Rate-Limit ist kein Ausschluss, sondern eine Bitte um Geduld.
+                # Auf einem GitHub-Runner teilen sich viele Nutzer eine IP,
+                # entsprechend schnell greift Shopifys Limit: Fuenf Shops sind
+                # daran gescheitert, weil hier vorher pauschal 2-6 Sekunden
+                # gewartet und der Retry-After-Header ignoriert wurde.
+                last_exc = httpx.HTTPStatusError(
+                    "HTTP 429", request=r.request, response=r
+                )
+                wait = _retry_after_seconds(r)
+                if wait is None:
+                    wait = min(RATE_LIMIT_BASE * (2 ** attempt), RATE_LIMIT_MAX)
+                time.sleep(min(wait, RATE_LIMIT_MAX) + random.uniform(0, 1.0))
+                rate_limit_hits += 1
+                continue
+            if r.status_code in (500, 502, 503, 504):
                 last_exc = httpx.HTTPStatusError(
                     f"HTTP {r.status_code}", request=r.request, response=r
                 )

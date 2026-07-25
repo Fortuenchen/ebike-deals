@@ -67,9 +67,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Python einrichten
+        # Nur auf GitHub-Runnern nötig, die mit leerer VM starten. Auf einem
+        # selbst gehosteten Rechner ist Python vorhanden - und setup-python ruft
+        # intern PowerShell auf, das dort das Nutzerprofil lädt und an einer
+        # restriktiven Execution-Policy scheitert. Das System-Python zu nehmen
+        # umgeht das, ohne eine Sicherheitseinstellung ändern zu müssen.
+        if: runner.environment == 'github-hosted'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Python melden
+        run: python --version
 
       - name: Abhängigkeiten installieren
         run: |

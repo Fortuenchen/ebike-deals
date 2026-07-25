@@ -224,14 +224,27 @@ nicht als Fehler.
 
 ### Ergebnisse
 
-Bericht und Rohdaten liegen 30 Tage als Artefakt am jeweiligen Lauf
-(*Actions → Lauf → Artifacts*).
+Der Bericht steht als Webseite unter
+**https://fortuenchen.github.io/ebike-deals/** und wird bei jedem Lauf neu
+veröffentlicht. Bericht und Rohdaten liegen zusätzlich 30 Tage als Artefakt am
+jeweiligen Lauf (*Actions → Lauf → Artifacts*).
 
-Wer den Bericht lieber als Webseite hätte: den zweiten Job aktiviert die
-Repository-Variable `PUBLISH_PAGES = true` (Settings → Variables), zusätzlich
-muss unter Settings → Pages die Quelle auf „GitHub Actions“ stehen. **Bei
-privaten Repositories brauchen GitHub Pages einen bezahlten Plan** — deshalb ist
-der Job standardmäßig aus.
+Gesteuert wird das über die Repository-Variable `PUBLISH_PAGES`. Der
+Veröffentlichungs-Job ist **bewusst vom Erfolg der Plausibilitätsprüfung
+entkoppelt**: Ein Teillauf (auf GitHub-IPs weisen acht Shops ab) liefert einen
+kleineren, aber gültigen Bericht — der gehört auf die Seite, denn eine aktuelle
+Teilansicht ist besser als eine veraltete Seite. Nur wenn *gar kein* brauchbarer
+Bericht entstand (unter 50 Angebote), bleibt die bisherige Seite stehen. Die
+Historie dagegen wird weiterhin nur bei bestandener Prüfung fortgeschrieben —
+Anzeige und Datenbestand sind zwei getrennte Dinge.
+
+Ein Nebeneffekt der `https`-Seite: Der Standort-Knopf funktioniert dort, anders
+als bei einer lokal geöffneten Datei — Chrome erlaubt Geolocation nur über
+`https` oder `localhost`.
+
+Bei einem öffentlichen Repository sind GitHub Pages kostenlos; der Workflow
+schaltet sie beim ersten Lauf selbst frei (`configure-pages` mit
+`enablement: true`).
 
 ### Was der erste Lauf zeigen wird
 

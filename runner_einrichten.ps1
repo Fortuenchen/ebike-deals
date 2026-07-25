@@ -18,6 +18,14 @@
 .NOTES
     Für die Installation als Dienst sind Administratorrechte nötig. Ohne
     Adminrechte läuft der Runner interaktiv (Fenster muss offen bleiben).
+
+    Windows blockiert das Ausführen von .ps1-Dateien standardmäßig
+    ("running scripts is disabled on this system"). Der Aufruf umgeht das
+    einmalig, ohne eine dauerhafte Einstellung zu ändern:
+
+        powershell -ExecutionPolicy Bypass -File .\runner_einrichten.ps1 -AlsDienst
+
+    (in einer als Administrator gestarteten PowerShell)
 #>
 
 param(

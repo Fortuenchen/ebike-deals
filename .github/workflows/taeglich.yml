@@ -48,6 +48,13 @@ jobs:
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 120
 
+    # Ob ein veröffentlichbarer Bericht entstanden ist. Bewusst getrennt vom
+    # Erfolg der Plausibilitätsprüfung: Ein Teillauf (auf GitHub-IPs blocken
+    # acht Shops) liefert einen kleineren, aber gültigen Bericht - der gehört
+    # auf die Seite, auch wenn er nicht in die Historie geschrieben wird.
+    outputs:
+      bericht_bereit: ${{ steps.bewerten.outputs.bereit }}
+
     defaults:
       run:
         # Auf einem selbst gehosteten Windows-Runner wäre die Vorgabe pwsh.
@@ -97,10 +104,40 @@ jobs:
           echo "--- Zusammenfassung ---"
           python -c "import json;d=json.load(open('deals.json',encoding='utf-8'));print(f\"{len(d['offers'])} Treffer aus {d['total_scanned']} geprueften Angeboten\")"
 
+      - name: Bericht bewerten
+        id: bewerten
+        if: always()
+        # Gibt es einen Bericht, der sich zu veröffentlichen lohnt? Eine
+        # Untergrenze von 50 Angeboten trennt einen echten (auch teilweisen)
+        # Lauf von einer Totalpanne - der Teillauf auf GitHub-IPs liefert rund
+        # 940, ein flächiger Adapter-Ausfall läge im einstelligen Bereich. Ohne
+        # diese Schranke könnte eine kaputte Ausgabe eine gute Live-Seite
+        # überschreiben.
+        run: |
+          if [ -s bericht.html ] && [ -s deals.json ]; then
+            n=$(python -c "import json;print(len(json.load(open('deals.json',encoding='utf-8'))['offers']))")
+          else
+            n=0
+          fi
+          echo "Bericht enthält $n Angebote."
+          if [ "$n" -ge 50 ]; then
+            echo "bereit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bereit=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Nur $n Angebote - Bericht wird nicht veröffentlicht, die bisherige Seite bleibt stehen."
+          fi
+
       - name: Ergebnis prüfen
+        id: check
+        # Kein Abbruch des Jobs: Die Prüfung entscheidet nur, ob heute in die
+        # Historie geschrieben wird. Ein IP-bedingter Teilausfall soll den Lauf
+        # nicht rot färben (das gäbe täglich falschen Alarm), sondern eine
+        # sichtbare Warnung setzen.
+        continue-on-error: true
         run: python ci_check.py
 
       - name: Preisverlauf zurückschreiben
+        if: steps.check.outcome == 'success'
         run: |
           git add historie
           if git diff --cached --quiet -- historie; then
@@ -133,17 +170,19 @@ jobs:
         # eine spätere Prüfung könnte alte Daten für neue halten.
         run: rm -f bericht.html deals.json
 
-      - name: Fehlschlag des Abrufs melden
-        if: steps.scrape.outcome == 'failure'
+      - name: Prüfergebnis melden
+        if: steps.check.outcome == 'failure'
         run: |
-          echo "::warning::Der Abruf endete mit einem Fehler. Die Plausibilitätsprüfung lief trotzdem durch, das Ergebnis ist also brauchbar - aber ein Blick ins Log lohnt sich."
+          echo "::warning::Die Plausibilitätsprüfung ist angeschlagen - die Historie wurde heute nicht fortgeschrieben. Meist heißt das, dass Shops die Runner-IP abweisen. Ein self-hosted Runner (runner_einrichten.ps1) behebt das."
 
-  # Optional: Bericht als Webseite veröffentlichen.
-  # Voraussetzung: Settings → Pages → Source = "GitHub Actions" und die
-  # Repository-Variable PUBLISH_PAGES = true.
+  # Bericht als Webseite unter https://fortuenchen.github.io/ebike-deals/
+  # veröffentlichen. Läuft, sobald ein veröffentlichbarer Bericht entstand -
+  # auch bei einem Teillauf, denn eine aktuelle Teilansicht ist besser als eine
+  # veraltete Seite. Steuerbar über die Repository-Variable PUBLISH_PAGES;
+  # ohne sie bleibt alles beim Artefakt-Download.
   veroeffentlichen:
     needs: aktualisieren
-    if: vars.PUBLISH_PAGES == 'true'
+    if: vars.PUBLISH_PAGES == 'true' && needs.aktualisieren.outputs.bericht_bereit == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -159,9 +198,21 @@ jobs:
           path: site
 
       - name: Als Startseite ablegen
-        run: cp site/bericht.html site/index.html
+        run: |
+          cp site/bericht.html site/index.html
+          # deals.json nicht mit veröffentlichen - die Seite zeigt den Bericht,
+          # nicht die Rohdaten.
+          rm -f site/deals.json
+          # Verhindert, dass GitHub die Seite durch Jekyll verarbeitet.
+          touch site/.nojekyll
 
-      - uses: actions/configure-pages@v5
+      - name: Pages einrichten
+        uses: actions/configure-pages@v5
+        with:
+          # Aktiviert GitHub Pages beim ersten Lauf automatisch, sodass man es
+          # nicht zusätzlich in den Repository-Einstellungen umlegen muss.
+          enablement: true
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

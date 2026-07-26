@@ -16,7 +16,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        methode: [direkt, warp, cffi-direkt, cffi-warp]
+        include:
+          - methode: direkt
+            warp: false
+            impersonate: ""
+          - methode: warp
+            warp: true
+            impersonate: ""
+          - methode: cffi-direkt
+            warp: false
+            impersonate: "chrome124"
+          - methode: cffi-warp
+            warp: true
+            impersonate: "chrome124"
     name: ${{ matrix.methode }}
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +43,7 @@ jobs:
           pip install curl_cffi
 
       - name: Cloudflare WARP einrichten
-        if: contains(matrix.methode, 'warp')
+        if: ${{ matrix.warp }}
         run: |
           set -e
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
@@ -58,5 +70,5 @@ jobs:
 
       - name: Shops prüfen (${{ matrix.methode }})
         env:
-          IMPERSONATE: ${{ contains(matrix.methode, 'cffi') && 'chrome124' || '' }}
+          IMPERSONATE: ${{ matrix.impersonate }}
         run: python tools/diagnose_shops.py

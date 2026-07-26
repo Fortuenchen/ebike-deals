@@ -70,15 +70,22 @@ jobs:
             shops: "upway"
             collections: "sale"
             render: false
+          # "all" trunkiert je frischer IP bei ~6 Shopify-Abrufen, daher drei
+          # Fenster zu je hoechstens 5 Seiten.
           - name: upway-all1
             shops: "upway"
             collections: "all"
-            pages: "1-7"
+            pages: "1-5"
             render: false
           - name: upway-all2
             shops: "upway"
             collections: "all"
-            pages: "8-16"
+            pages: "6-10"
+            render: false
+          - name: upway-all3
+            shops: "upway"
+            collections: "all"
+            pages: "11-16"
             render: false
           - name: c
             shops: "ebikeonly fahrradde denfeld mhwbike"

@@ -128,8 +128,17 @@ def _monday_iso() -> str:
     aber die Grenze wird beim Rendern berechnet: Ab Montag zählen nur noch
     Angebote als neu, die seit diesem Montag zum ersten Mal auftauchten - das
     Fenster setzt sich damit jede Woche von selbst zurück.
+
+    Bewusst in Europe/Berlin, nicht in der Runner-UTC: sonst kippte die Grenze
+    erst um 00:00 UTC (02:00 MESZ), und der 00:00-MESZ-Montagslauf (22:00 UTC
+    sonntags, in UTC noch "Sonntag") zeigte noch die Vorwoche. Fehlt tzdata
+    (manche Windows), Rückfall auf die lokale Zeit.
     """
-    t = date.today()
+    try:
+        from zoneinfo import ZoneInfo
+        t = datetime.now(ZoneInfo("Europe/Berlin")).date()
+    except Exception:
+        t = date.today()
     return (t - timedelta(days=t.weekday())).isoformat()
 
 

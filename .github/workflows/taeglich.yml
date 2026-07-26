@@ -18,8 +18,14 @@ name: Tägliche Aktualisierung
 
 on:
   schedule:
-    # 04:00 UTC = 06:00 deutsche Sommerzeit, 05:00 Winterzeit.
-    - cron: "0 4 * * *"
+    # Zweimal täglich. GitHub-Cron kennt nur UTC:
+    #   0 10 UTC = 12:00 deutsche Sommerzeit (Winter 11:00) — Mittagslauf
+    #   0 22 UTC = 00:00 deutsche Sommerzeit (Winter 23:00) — Mitternachtslauf
+    # Beide erzeugen und veröffentlichen den Bericht. Aber NUR der Mittagslauf
+    # schreibt den Tagespreis in die Historie (siehe Schritt "Preisverlauf
+    # zurückschreiben"), damit je Tag genau ein Preis (der von 12:00) festliegt.
+    - cron: "0 10 * * *"
+    - cron: "0 22 * * *"
   workflow_dispatch:
     inputs:
       render:
@@ -254,7 +260,12 @@ jobs:
         run: python ci_check.py
 
       - name: Preisverlauf zurückschreiben
-        if: steps.check.outcome == 'success'
+        # Nur der Mittagslauf (0 10 UTC) und manuelle Läufe schreiben den
+        # Tagespreis fest. Der Mitternachtslauf (0 22) veröffentlicht nur die
+        # Seite neu, damit je Tag genau EIN Preis in der Historie steht.
+        if: >-
+          steps.check.outcome == 'success' &&
+          (github.event_name != 'schedule' || github.event.schedule == '0 10 * * *')
         run: |
           git add historie
           if git diff --cached --quiet -- historie; then

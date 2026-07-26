@@ -9,7 +9,13 @@ nicht die genaue Angebotszahl.
 
 from __future__ import annotations
 
+import sys
 import time
+from pathlib import Path
+
+# Aus tools/ heraus liegt das Paket eine Ebene hoeher - Wurzel auf den Pfad,
+# damit "import ebikedeals" auch ohne Installation greift (wie run.py am Wurzel).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import ebikedeals.net as net
 from ebikedeals.net import Blocked, Disallowed, Fetcher

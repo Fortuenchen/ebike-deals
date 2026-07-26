@@ -50,62 +50,59 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
-  # --- 1) Scrape in Shards, jeder mit eigener WARP-IP ----------------------
+  # --- 1) Scrape: ein Job pro Shop, jeder mit eigener WARP-IP --------------
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
+        # EIN Job pro Shop: Der Job-Name IST der Shop-Key, sodass ein roter Job
+        # im Actions-Verlauf sofort zeigt, welcher Shop klemmt. Jeder Shop hat
+        # eine eigene WARP-IP, damit sich die Shopify-Shops nicht mehr
+        # gegenseitig ins 429 treiben.
         include:
-          # Die fünf Shopify-Shops (upway, boc24, bikemarket24, ebikeonly,
-          # fahrradde) sind auf verschiedene Shards verteilt; die schwersten
-          # (boc24, upway) stehen allein, damit keine WARP-IP zu viel Shopify
-          # trägt. Der Rest ist gleichmäßig aufgeteilt.
-          - name: a
-            shops: "luckybike boc24 fahrrad24 radfieber"
+          - shop: fahrrad24
+          - shop: fahrradxxl
+          - shop: lagerverkauf
+          - shop: bikemarket24
+          - shop: radfieber
+          - shop: bikeexchange
+          - shop: bikeangebot
+          - shop: rad1
+          - shop: luckybike
             render: true
-          - name: b
-            shops: "fahrradxxl bikeexchange ebikestock"
-            render: false
-          # upway ist zu gross fuer eine IP (sale + die tiefe "all"-Collection
-          # laufen ins 429). Auf drei Sub-Shards mit je eigener WARP-IP verteilt:
-          # sale komplett, "all" in zwei Seitenbereichen. Der Merge legt die drei
-          # upway-Teile wieder zu einem Shop zusammen.
+          - shop: jobradloop
+          - shop: boc24
+          - shop: denfeld
+          - shop: bikediscount
+          - shop: bike24
+          - shop: ebikeonly
+          - shop: fahrradde
+          - shop: mhwbike
+          - shop: radwelt
+          - shop: nubuk
+          - shop: ebikestock
+            ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
+          # upway ist zu gross für eine IP (sale + tiefe "all"-Collection laufen
+          # ins 429), daher vier Seitenbereich-Jobs mit je eigener WARP-IP; der
+          # Merge legt sie wieder zu einem upway zusammen.
           - name: upway-sale
-            shops: "upway"
-            collections: "sale"
-            render: false
-          # "all" trunkiert je frischer IP bei ~6 Shopify-Abrufen, daher drei
-          # Fenster zu je hoechstens 5 Seiten.
+            shop: upway
+            collections: sale
           - name: upway-all1
-            shops: "upway"
-            collections: "all"
+            shop: upway
+            collections: all
             pages: "1-5"
-            render: false
           - name: upway-all2
-            shops: "upway"
-            collections: "all"
+            shop: upway
+            collections: all
             pages: "6-10"
-            render: false
           - name: upway-all3
-            shops: "upway"
-            collections: "all"
+            shop: upway
+            collections: all
             pages: "11-16"
-            render: false
-          - name: c
-            shops: "ebikeonly fahrradde denfeld mhwbike"
-            render: false
-          - name: d
-            shops: "bikemarket24 lagerverkauf radwelt rad1"
-            render: false
-          - name: e
-            shops: "jobradloop bikeangebot nubuk bikediscount bike24"
-            render: false
-            # Dieser (leichte) Shard holt nebenbei die Bewertungen ALLER Shops,
-            # damit das nicht den Merge aufhält - läuft so parallel zu upway.
-            ratings: true
-    name: scrape-${{ matrix.name }}
+    name: ${{ matrix.name || matrix.shop }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -146,7 +143,7 @@ jobs:
           pip install playwright
           python -m playwright install --with-deps chromium
 
-      - name: Shard scrapen (${{ matrix.name }})
+      - name: "${{ matrix.name || matrix.shop }} scrapen"
         env:
           IMPERSONATE: chrome124
         run: |
@@ -166,29 +163,38 @@ jobs:
           if [ -n "${{ matrix.pages }}" ]; then
             PAGES="--pages ${{ matrix.pages }}"
           fi
-          python tools/scrape_shard.py ${{ matrix.shops }} \
-            --out "shard-${{ matrix.name }}.pkl" \
+          python tools/scrape_shard.py ${{ matrix.shop }} \
+            --out "shard-${{ matrix.name || matrix.shop }}.pkl" \
             --min-discount "${{ inputs.min_discount || '50' }}" \
             --max-pages 8 $RENDER $RATINGS $COLL $PAGES
 
-      - name: Shard-Ergebnis ablegen
+      - name: Ergebnis ablegen
+        # always(): auch ein rot gewordener Shop hat sein Pickle schon
+        # geschrieben (mit dem Fehler drin) - der Merge soll es trotzdem bekommen.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shard-${{ matrix.name }}
-          path: shard-${{ matrix.name }}.pkl
+          name: shard-${{ matrix.name || matrix.shop }}
+          path: shard-${{ matrix.name || matrix.shop }}.pkl
+          if-no-files-found: ignore
           retention-days: 3
 
-      - name: Bewertungen ablegen (nur Ratings-Shard)
-        if: ${{ matrix.ratings }}
+      - name: Bewertungen ablegen (nur Ratings-Job)
+        if: ${{ always() && matrix.ratings }}
         uses: actions/upload-artifact@v4
         with:
           name: bewertungen
           path: bewertungen.json
+          if-no-files-found: ignore
           retention-days: 3
 
   # --- 2) Shards zusammenführen: Bericht, Preisverlauf, Prüfung ------------
   zusammenfuehren:
     needs: scrape
+    # !cancelled(): auch wenn einzelne Shop-Jobs rot sind (ein Shop blockt),
+    # soll der Bericht aus den übrigen entstehen - die Fehler-Pickles sind
+    # dank always()-Upload trotzdem dabei.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:

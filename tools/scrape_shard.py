@@ -88,6 +88,16 @@ def main() -> int:
     for r in sorted(report.results, key=lambda r: r.key):
         note = r.error or r.skipped_reason or f"{len(r.offers)} Angebote"
         print(f"  {r.key:14} scanned={r.scanned:<6} {note[:44]}", file=sys.stderr)
+
+    # Non-null Exit, wenn ein Shop mit Fehler endete (blockiert/Ausnahme): so
+    # färbt sich der GitHub-Job rot und man sieht am Job-Namen sofort, welcher
+    # Shop klemmt. Das Pickle ist da schon geschrieben (mit dem Fehler drin), der
+    # Merge bekommt es also trotzdem. Übersprungene Shops (bike24) und ein Shop
+    # mit 0 Treffern bei sauberem Scan zählen NICHT als Fehler.
+    errored = [r.key for r in report.results if r.error]
+    if errored:
+        print(f"::error::Scrape mit Fehler: {', '.join(errored)}", file=sys.stderr)
+        return 1
     return 0
 
 

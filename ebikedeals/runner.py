@@ -39,6 +39,12 @@ class RunConfig:
     render: bool = False
     cache_dir: Path | None = None
     cache_ttl: float = 3600.0
+    #: Nur diese (Shopify-)Collections scrapen, None = alle. Zusammen mit
+    #: page_window teilt das einen grossen Shop (upway) auf mehrere Jobs mit je
+    #: eigener WARP-IP auf, sodass keine IP an der Seitenzahl ins 429 laeuft.
+    only_collections: list[str] | None = None
+    #: Nur dieser Seitenbereich (start, ende inklusive) je Collection, None = alle.
+    page_window: tuple[int, int] | None = None
 
 
 @dataclass
@@ -70,6 +76,10 @@ def run(config: RunConfig) -> RunReport:
         delay=config.delay,
         cache_ttl=config.cache_ttl,
     )
+    # Sharding-Fenster (siehe RunConfig): der Adapter liest sie ueber den Fetcher,
+    # ohne dass jede scrape()-Signatur sie durchreichen muss.
+    fetcher.page_window = config.page_window
+    fetcher.only_collections = config.only_collections
     robots = RobotsCache(fetcher)
     if config.respect_robots:
         fetcher.robots = robots

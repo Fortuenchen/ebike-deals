@@ -64,9 +64,19 @@ class ShopifyAdapter(Adapter):
     page_size = 250
 
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
+        # Optionales Sharding-Fenster (siehe RunConfig): nur bestimmte Collections
+        # und Seiten, damit ein grosser Shop (upway) auf mehrere Jobs mit je
+        # eigener IP passt, ohne an der Seitenzahl ins 429 zu laufen.
+        only = getattr(fetcher, "only_collections", None)
+        p_start, p_end = getattr(fetcher, "page_window", None) or (1, None)
+        collections = [h for h in self.collections if not only or h in only]
+
         seen: set[int] = set()
-        for index, handle in enumerate(self.collections):
-            for page in range(1, self.pages_for(max_pages) + 1):
+        for index, handle in enumerate(collections):
+            last = self.pages_for(max_pages)
+            if p_end is not None:
+                last = min(last, p_end)
+            for page in range(p_start, last + 1):
                 url = (
                     f"{self.base}/collections/{handle}/products.json"
                     f"?limit={self.page_size}&page={page}"
@@ -74,12 +84,11 @@ class ShopifyAdapter(Adapter):
                 try:
                     data = fetcher.get_json(url)
                 except Exception:
-                    # A failure on the very first request means the shop was
-                    # not reached at all. Swallowing it reports "0 products
-                    # checked", which reads like "no offers today" - fahrrad.de
-                    # showed exactly that after a transient error. Later pages
-                    # and later collections just end the walk.
-                    if page == 1 and index == 0:
+                    # Ein Fehler auf der ERSTEN Anfrage dieses Shards (Seite
+                    # p_start der ersten Collection) heisst: gar nicht erreicht -
+                    # das muss sichtbar werden. Spaetere Seiten/Collections enden
+                    # nur den Lauf.
+                    if page == p_start and index == 0:
                         raise
                     break
                 products = data.get("products") or []

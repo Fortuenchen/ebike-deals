@@ -60,7 +60,25 @@ jobs:
             shops: "luckybike boc24 fahrrad24 radfieber"
             render: true
           - name: b
-            shops: "upway fahrradxxl bikeexchange ebikestock"
+            shops: "fahrradxxl bikeexchange ebikestock"
+            render: false
+          # upway ist zu gross fuer eine IP (sale + die tiefe "all"-Collection
+          # laufen ins 429). Auf drei Sub-Shards mit je eigener WARP-IP verteilt:
+          # sale komplett, "all" in zwei Seitenbereichen. Der Merge legt die drei
+          # upway-Teile wieder zu einem Shop zusammen.
+          - name: upway-sale
+            shops: "upway"
+            collections: "sale"
+            render: false
+          - name: upway-all1
+            shops: "upway"
+            collections: "all"
+            pages: "1-7"
+            render: false
+          - name: upway-all2
+            shops: "upway"
+            collections: "all"
+            pages: "8-16"
             render: false
           - name: c
             shops: "ebikeonly fahrradde denfeld mhwbike"
@@ -127,10 +145,18 @@ jobs:
           if [ "${{ matrix.ratings }}" = "true" ]; then
             RATINGS="--ratings-out bewertungen.json"
           fi
+          COLL=""
+          if [ -n "${{ matrix.collections }}" ]; then
+            COLL="--collections ${{ matrix.collections }}"
+          fi
+          PAGES=""
+          if [ -n "${{ matrix.pages }}" ]; then
+            PAGES="--pages ${{ matrix.pages }}"
+          fi
           python tools/scrape_shard.py ${{ matrix.shops }} \
             --out "shard-${{ matrix.name }}.pkl" \
             --min-discount "${{ inputs.min_discount || '50' }}" \
-            --max-pages 8 $RENDER $RATINGS
+            --max-pages 8 $RENDER $RATINGS $COLL $PAGES
 
       - name: Shard-Ergebnis ablegen
         uses: actions/upload-artifact@v4

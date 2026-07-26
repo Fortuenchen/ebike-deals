@@ -34,16 +34,26 @@ def main() -> int:
     ap.add_argument("--max-pages", type=int, default=8)
     a = ap.parse_args()
 
-    # Shards einsammeln; ein Shop darf nur einmal vorkommen.
-    results = []
-    seen: set[str] = set()
+    # Shards einsammeln. Ein Shop kann aus MEHREREN Seitenbereich-Shards kommen
+    # (upway: sale / all 1-7 / all 8-16). Dann die Angebote zusammenlegen (nach
+    # URL entdoppelt) und die Zaehler addieren, statt den zweiten Teil zu
+    # verwerfen - sonst fehlte genau der zweite Seitenbereich.
+    by_key: dict = {}
+    order: list[str] = []
     for p in a.pickles:
         for r in pickle.loads(p.read_bytes()):
-            if r.key in seen:
-                print(f"WARN: {r.key} doppelt (in {p.name}) - uebersprungen", file=sys.stderr)
-                continue
-            seen.add(r.key)
-            results.append(r)
+            if r.key in by_key:
+                base = by_key[r.key]
+                have = {o.url.split("?")[0] for o in base.offers}
+                base.offers.extend(o for o in r.offers if o.url.split("?")[0] not in have)
+                base.scanned += r.scanned
+                base.sold_out += r.sold_out
+                if r.error and not base.error:
+                    base.error = r.error
+            else:
+                by_key[r.key] = r
+                order.append(r.key)
+    results = [by_key[k] for k in order]
 
     config = RunConfig(
         min_discount=a.min_discount,

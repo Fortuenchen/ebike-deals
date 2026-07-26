@@ -31,6 +31,10 @@ def main() -> int:
     ap.add_argument("--render", action="store_true", help="JS-Listings rendern (lucky-bike)")
     ap.add_argument("--min-discount", type=float, default=50.0)
     ap.add_argument("--max-pages", type=int, default=8)
+    ap.add_argument("--collections", default=None,
+                    help="nur diese Shopify-Collections (Komma-getrennt, z. B. all)")
+    ap.add_argument("--pages", default=None, metavar="START-ENDE",
+                    help="nur dieser Seitenbereich je Collection (z. B. 8-16)")
     ap.add_argument("--ratings-out", type=Path, default=None, metavar="PFAD",
                     help="Zusaetzlich Bewertungen ALLER Shops holen und als Cache "
                          "ablegen (laeuft so parallel zu den anderen Shards, statt "
@@ -39,6 +43,11 @@ def main() -> int:
 
     # Bewusst OHNE history_db und ratings_cache: Preisverlauf und Bewertungen
     # macht der Merge-Schritt einmal ueber alle Shards zusammen.
+    only = a.collections.split(",") if a.collections else None
+    window = None
+    if a.pages:
+        start, _, end = a.pages.partition("-")
+        window = (int(start), int(end) if end else int(start))
     config = RunConfig(
         min_discount=a.min_discount,
         max_pages=a.max_pages,
@@ -46,6 +55,8 @@ def main() -> int:
         render=a.render,
         history_db=None,
         ratings_cache=None,
+        only_collections=only,
+        page_window=window,
     )
     print(f"Shard [{', '.join(a.shops)}] (render={a.render})", file=sys.stderr)
     report = run(config)

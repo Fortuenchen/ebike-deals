@@ -19,10 +19,15 @@ name: Tägliche Aktualisierung
 # `runner_einrichten.ps1` setzt die Variable auf self-hosted.
 
 on:
-  schedule:
-    # 04:00 UTC = 06:00 deutsche Sommerzeit, 05:00 Winterzeit.
-    # GitHub verschiebt geplante Läufe unter Last, teils um 30+ Minuten.
-    - cron: "0 4 * * *"
+  # Kein schedule/cron: Der Lauf wird lokal angestoßen. Eine Windows-Aufgabe
+  # (runner_einrichten.ps1 -AlsAufgabe) startet beim Hochfahren, stößt genau
+  # diesen Workflow an und lässt den self-hosted Runner einen Job abarbeiten -
+  # danach beendet er sich (run.cmd --once). Höchstens ein Lauf pro Tag.
+  #
+  # Ein GitHub-Cron passt dazu nicht: Der Runner ist zwischen den Läufen offline,
+  # ein zeitgesteuerter Job bliebe unbearbeitet in der Warteschlange hängen und
+  # würde später den falschen (veralteten) Lauf abholen. Manuell auslösbar bleibt
+  # der Lauf über workflow_dispatch (genau das nutzt die Windows-Aufgabe).
   workflow_dispatch:
     inputs:
       render:

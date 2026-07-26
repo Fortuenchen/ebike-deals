@@ -32,6 +32,10 @@ param(
     [string]$Repo    = "Fortuenchen/ebike-deals",
     [string]$Ordner  = "$env:USERPROFILE\actions-runner",
     [string]$Name    = "$env:COMPUTERNAME-ebike",
+    # Ausweichzeit für -AlsAufgabe: Läuft der Rechner den ganzen Tag ohne
+    # Neuanmeldung, stößt die Aufgabe den Lauf zu dieser Uhrzeit an. Beim
+    # Hochfahren läuft sie ohnehin.
+    [string]$Uhrzeit = "22:00",
     [switch]$AlsDienst,
     [switch]$AlsAufgabe,
     [switch]$Entfernen
@@ -48,6 +52,12 @@ if ($Entfernen) {
     # Geplante Aufgabe entfernen, falls vorhanden.
     Unregister-ScheduledTask -TaskName "GitHubRunner-ebike" -Confirm:$false `
         -ErrorAction SilentlyContinue
+    # Erzeugten Starter und Tagesmarke mit aufräumen.
+    Remove-Item -Path (Join-Path $Ordner "lauf_einmal.ps1"), `
+        (Join-Path $Ordner "letzter_lauf.txt") -ErrorAction SilentlyContinue
+    # Einen noch laufenden Listener beenden, sonst kann config.cmd remove haken.
+    Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
     Push-Location $Ordner
     try {
         $token = (gh api -X POST "repos/$Repo/actions/runners/remove-token" --jq .token)
@@ -137,29 +147,79 @@ if ($AlsDienst) {
     Write-Host "Wenn die Jobs 'python nicht gefunden' melden, stattdessen -AlsAufgabe nutzen."
 }
 elseif ($AlsAufgabe) {
-    # Geplante Aufgabe beim Anmelden - läuft im Nutzerkontext (voller PATH),
-    # überlebt Neustarts und braucht keine Adminrechte. Für diesen Rechner der
-    # empfohlene Weg.
-    Schritt "Als geplante Aufgabe (beim Anmelden)"
+    # Geplante Aufgabe im Nutzerkontext (voller PATH, gh-Anmeldung, Chromium),
+    # ohne Adminrechte. Statt eines Dauer-Listeners stößt sie den Lauf an und
+    # lässt den Runner genau einen Job abarbeiten - danach geht er aus
+    # (run.cmd --once). Für diesen Rechner der empfohlene Weg.
+    Schritt "Als geplante Aufgabe (Lauf-einmal beim Hochfahren)"
+
+    try { $zeit = [datetime]::ParseExact($Uhrzeit, 'HH:mm', $null) }
+    catch { throw "Uhrzeit '$Uhrzeit' nicht im Format HH:mm (z. B. 22:00)." }
+
+    # Kleiner Starter, den die Aufgabe aufruft. Eine Tagesmarke
+    # (letzter_lauf.txt) hält es bei einem Lauf pro Kalendertag - der
+    # Start-Auslöser feuert sonst bei jeder Anmeldung erneut.
+    $wrapper = Join-Path $Ordner "lauf_einmal.ps1"
+    $vorlage = @'
+# Automatisch erzeugt von runner_einrichten.ps1 - nicht von Hand aendern.
+# Stoesst den taeglichen ebike-deals-Lauf an und laesst den self-hosted Runner
+# genau einen Job abarbeiten; danach beendet er sich. Hoechstens ein Lauf/Tag.
+# (Bewusst ohne Umlaute: powershell -File liest .ps1 je nach Codepage sonst falsch.)
+$ErrorActionPreference = "Stop"
+$Repo   = "__REPO__"
+$Ordner = "__ORDNER__"
+$Marke  = Join-Path $Ordner "letzter_lauf.txt"
+$heute  = (Get-Date).ToString("yyyy-MM-dd")
+
+if ((Test-Path $Marke) -and ((Get-Content $Marke -Raw).Trim() -eq $heute)) {
+    Write-Host "Heute ($heute) bereits gelaufen - nichts zu tun."
+    exit 0
+}
+
+# Lauf auf GitHub anstossen (nutzt die vorhandene gh-Anmeldung).
+gh workflow run taeglich.yml --repo $Repo
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Konnte den Lauf nicht anstossen - naechster Trigger versucht es erneut."
+    exit 1
+}
+
+# Genau einen Job abarbeiten, dann beenden. run.cmd kehrt erst zurueck, wenn der
+# Job fertig ist. Haengt es (kein Job), beendet das Zeitlimit der Aufgabe den
+# ganzen Prozessbaum - dann bleibt die Tagesmarke ungesetzt und morgen erneut.
+Set-Location $Ordner
+& (Join-Path $Ordner "run.cmd") --once
+
+Set-Content -Path $Marke -Value $heute
+Write-Host "Lauf fuer $heute erledigt, Runner ist beendet."
+'@
+    $inhalt = $vorlage.Replace('__REPO__', $Repo).Replace('__ORDNER__', $Ordner)
+    Set-Content -Path $wrapper -Value $inhalt -Encoding UTF8
+
     $aufgabe = "GitHubRunner-ebike"
-    $aktion  = New-ScheduledTaskAction -Execute "$Ordner\run.cmd"
-    $ausloeser = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $aktion = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapper`""
+    # Zwei Auslöser: beim Anmelden (Hochfahren) und - falls der Rechner den Tag
+    # über durchläuft - ersatzweise zur festen Uhrzeit.
+    $beimStart = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $ersatz    = New-ScheduledTaskTrigger -Daily -At $zeit
+    # ExecutionTimeLimit ist das Sicherheitsnetz: Wartet run.cmd auf einen Job,
+    # der nie kommt, bricht die Aufgabe nach zwei Stunden den ganzen Baum ab -
+    # kein hängender Listener. StartWhenAvailable holt einen verpassten
+    # Ausweichlauf (Rechner war aus) beim nächsten Einschalten nach.
     $einst = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-        -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
-    Register-ScheduledTask -TaskName $aufgabe -Action $aktion -Trigger $ausloeser `
-        -Settings $einst -Description "Startet den GitHub-Actions-Runner für ebike-deals" `
+        -DontStopIfGoingOnBatteries -StartWhenAvailable `
+        -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+    Register-ScheduledTask -TaskName $aufgabe -Action $aktion `
+        -Trigger @($beimStart, $ersatz) -Settings $einst `
+        -Description "Stößt den täglichen ebike-deals-Lauf an; der Runner beendet sich nach dem Job" `
         -Force | Out-Null
-    # Nicht sofort starten, wenn schon ein Runner läuft (etwa ein interaktiv
-    # gestarteter) - zwei Listener auf derselben Anmeldung streiten sich.
-    if (Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue) {
-        Write-Host "Aufgabe '$aufgabe' angelegt. Ein Runner läuft bereits - die" -ForegroundColor Green
-        Write-Host "Aufgabe übernimmt bei der nächsten Anmeldung."
-    } else {
-        Start-ScheduledTask -TaskName $aufgabe
-        Write-Host "Aufgabe '$aufgabe' angelegt und gestartet." -ForegroundColor Green
-    }
-    Write-Host "Der Runner startet künftig automatisch bei Ihrer Anmeldung."
-    Write-Host "Entfernen:  Unregister-ScheduledTask -TaskName $aufgabe -Confirm:`$false"
+
+    Write-Host "Aufgabe '$aufgabe' angelegt." -ForegroundColor Green
+    Write-Host "Sie läuft beim Hochfahren (und ersatzweise täglich um $Uhrzeit),"
+    Write-Host "stößt den Lauf an und beendet den Runner nach dem Job - höchstens 1x pro Tag."
+    Write-Host "Nicht sofort gestartet; der nächste Start bzw. $Uhrzeit übernimmt."
+    Write-Host "Sofort testen:  powershell -ExecutionPolicy Bypass -File `"$wrapper`""
+    Write-Host "Entfernen:      .\runner_einrichten.ps1 -Entfernen"
 }
 else {
     Schritt "Fertig - Runner läuft noch nicht"

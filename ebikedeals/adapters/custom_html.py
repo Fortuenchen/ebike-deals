@@ -9,7 +9,7 @@ from typing import Iterator
 from ..htmlutil import Node, parse, script_blocks
 from ..model import Offer, dedup_sizes, looks_like_size, parse_percent, parse_price
 from ..net import Fetcher
-from .base import Adapter, paged_listing
+from .base import Adapter, image_url, paged_listing
 
 
 class FahrradXXL(Adapter):
@@ -101,7 +101,7 @@ class FahrradXXL(Adapter):
             brand=brand,
             sizes=sizes,
             branches=branches,
-            image=img.get("src") if img is not None else "",
+            image=image_url(img),
             shop_discount_pct=shop_pct,
         )
 
@@ -194,7 +194,7 @@ class Radfieber(Adapter):
             price=price,
             list_price=list_price,
             sizes=sizes_by_url.get(href.split("?")[0], []),
-            image=img.get("src") if img is not None else "",
+            image=image_url(img),
             availability=stock.text if stock is not None else "",
             shop_discount_pct=parse_percent(badge.text) if badge is not None else None,
         )
@@ -262,7 +262,7 @@ class Rad1(Adapter):
             url=self.abs_url(title_link.get("href")),
             price=price,
             list_price=list_price,
-            image=img.get("src") if img is not None else "",
+            image=image_url(img),
             note=note,
         )
 
@@ -334,7 +334,7 @@ class NubukBikes(Adapter):
             price=price,
             list_price=list_price,
             brand=brand,
-            image=img.get("src") if img is not None else "",
+            image=image_url(img),
         )
 
 

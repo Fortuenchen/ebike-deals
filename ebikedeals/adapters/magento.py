@@ -19,7 +19,7 @@ from typing import Iterator
 from ..htmlutil import Node, parse, script_blocks
 from ..model import Offer, parse_price
 from ..net import Fetcher
-from .base import Adapter, nearest_product_link, paged_listing
+from .base import Adapter, image_url, nearest_product_link, paged_listing
 
 
 class MagentoAdapter(Adapter):
@@ -82,11 +82,36 @@ class MagentoAdapter(Adapter):
             price=final_price,
             list_price=old_price,
             brand=brand,
+            image=_tile_image(box),
             in_stock=in_stock,
             availability=(
                 "" if in_stock is None else ("verfügbar" if in_stock else "nicht auf Lager")
             ),
         )
+
+
+def _tile_image(box: Node) -> str:
+    """Product photo for a listing tile, located from its priceBox.
+
+    The photo is not inside the priceBox but a few levels up in the tile, among
+    icons (compare, add-to-cart) and sometimes a brand-filter logo. Magento
+    serves product photos from /media/catalog/product/ in every theme, while
+    icons come from /static/ and brand logos from /media/images/ - so that path
+    segment picks the photo out reliably. fahrrad24 fills the img's src;
+    fahrradlagerverkauf lazy-loads it into data-src (image_url handles both).
+    """
+    cur: Node | None = box
+    for _ in range(8):
+        if cur is None:
+            break
+        if cur.has_class("product-item") or cur.has_class("cs-product-tile"):
+            for img in cur.find_all("img"):
+                url = image_url(img)
+                if "/catalog/product/" in url:
+                    return url
+            break
+        cur = cur.parent
+    return ""
 
 
 def _availability_by_url(html: str) -> dict[str, bool]:

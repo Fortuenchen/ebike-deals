@@ -138,8 +138,12 @@ def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> 
     else:
         sizes = '<span class="size size--none">keine Größenangabe gefunden</span>'
 
+    # referrerpolicy="no-referrer": some shops (fahrrad24) hotlink-protect their
+    # images and answer a foreign referer with 403, but serve the same URL fine
+    # with none. Sending no referer loads them and keeps the visitor's page out
+    # of the shops' logs. Every shop's CDN tested serves images without a referer.
     img = (
-        f'<img loading="lazy" src="{_esc(o.image)}" alt="">'
+        f'<img loading="lazy" referrerpolicy="no-referrer" src="{_esc(o.image)}" alt="">'
         if o.image
         else '<div class="noimg"></div>'
     )

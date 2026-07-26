@@ -240,6 +240,40 @@ def read_battery_wh(html: str) -> int | None:
     return None
 
 
+def read_og_image(html: str) -> str:
+    """Main product image from a detail page's Open Graph / JSON-LD metadata.
+
+    A fallback for listings that build their thumbnails in JavaScript (nubuk),
+    so the static listing HTML carries no usable <img>. Product pages set
+    og:image reliably; when the page is fetched anyway for sizes, the image
+    costs no extra request.
+    """
+    doc = parse(html)
+    for meta in doc.find_all("meta"):
+        prop = (meta.get("property") or meta.get("name") or "").lower()
+        if prop in ("og:image", "og:image:secure_url", "twitter:image"):
+            url = (meta.get("content") or "").strip()
+            if url and not url.startswith("data:"):
+                return url
+
+    for block in script_blocks(html, "application/ld+json"):
+        try:
+            data = json.loads(block)
+        except Exception:
+            continue
+        for node in _walk_json(data):
+            if not isinstance(node, dict) or node.get("@type") != "Product":
+                continue
+            img = node.get("image")
+            if isinstance(img, list):
+                img = img[0] if img else ""
+            if isinstance(img, dict):
+                img = img.get("url") or ""
+            if isinstance(img, str) and img.strip():
+                return img.strip()
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Cross-checking the listing price against the product page
 # ---------------------------------------------------------------------------

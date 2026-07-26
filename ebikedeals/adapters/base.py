@@ -149,6 +149,34 @@ def paged_listing(adapter, fetcher, max_pages, page_url, extract):
                 break
 
 
+def image_url(img: Node | None) -> str:
+    """Best real image URL from an ``<img>``, seeing through lazy-loading.
+
+    Lazy-load themes park a 1x1 base64 GIF in ``src`` and keep the real URL in a
+    ``data-`` attribute (bike-discount, fahrradlagerverkauf); others fill ``src``
+    directly (nubuk). Take the first attribute that holds an actual URL and never
+    return a ``data:`` placeholder - a placeholder renders as a blank tile, which
+    is exactly the "no image" bug this avoids.
+    """
+    if img is None:
+        return ""
+    for attr in ("data-src", "data-original", "data-lazy-src", "data-lazy", "src"):
+        val = (img.get(attr) or "").strip()
+        if val and not val.startswith("data:"):
+            return val
+    # srcset / data-srcset: "url 320w, url2 640w" (bike-discount even prefixes a
+    # stray comma). The first listed URL is the smallest variant - the right
+    # size for a card thumbnail.
+    for attr in ("data-srcset", "srcset"):
+        raw = (img.get(attr) or "").strip().lstrip(",").strip()
+        if not raw:
+            continue
+        first = raw.split(",", 1)[0].strip().split(" ", 1)[0].strip()
+        if first and not first.startswith("data:"):
+            return first
+    return ""
+
+
 def first_text(container: Node | None, *classes: str) -> str:
     """Text of the first descendant carrying any of the given classes."""
     if container is None:

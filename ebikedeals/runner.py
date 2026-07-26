@@ -15,7 +15,7 @@ from .model import Offer, ShopResult, detect_condition, parse_battery_wh
 from .net import Blocked, Disallowed, Fetcher
 from .render import Renderer
 from .robots import RobotsCache
-from .sizes import enrich, read_battery_wh, read_prices
+from .sizes import enrich, read_battery_wh, read_og_image, read_prices
 
 
 @dataclass
@@ -216,6 +216,10 @@ def _scrape_shop(
             if offer.battery_wh is None:
                 # Free of charge: the page is already fetched and loaded.
                 offer.battery_wh = read_battery_wh(html)
+            if not offer.image:
+                # Likewise free: rescues listings that build their thumbnails
+                # in JavaScript (nubuk), so the static listing HTML had none.
+                offer.image = read_og_image(html)
             _cross_check_price(offer, html)
             checked += 1
 

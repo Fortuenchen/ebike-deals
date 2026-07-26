@@ -25,7 +25,7 @@ from typing import Iterator
 from ..htmlutil import Node, parse
 from ..model import Offer, dedup_sizes, looks_like_size, parse_percent, parse_price
 from ..net import Fetcher
-from .base import Adapter, nearest_product_link, paged_listing
+from .base import Adapter, image_url, nearest_product_link, paged_listing
 
 
 class Shopware6Adapter(Adapter):
@@ -109,7 +109,7 @@ class Shopware6Adapter(Adapter):
             list_price=list_price,
             brand=(info.get("brand") or "").strip(),
             sizes=sizes,
-            image=(img.get("src") or img.get("data-src")) if img is not None else "",
+            image=image_url(img),
             shop_discount_pct=shop_pct,
         )
 

@@ -21,6 +21,15 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# Auf einem Windows-Runner ist stdout standardmäßig cp1252 und kann Zeichen wie
+# "→" nicht ausgeben - genau das ließ dieses Skript dort abstürzen, während es
+# auf dem Linux-Runner (UTF-8) lief. UTF-8 erzwingen, sonst kippt die Prüfung
+# an ihrer eigenen Ausgabe statt an den Daten.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 DEALS = Path(os.environ.get("DEALS_JSON", "deals.json"))
 HISTORY = Path(os.environ.get("HISTORY_DB", "preise.db"))
 

@@ -101,19 +101,32 @@ if (-not (Test-Path ".\config.cmd")) {
 }
 
 # --- Registrieren ----------------------------------------------------------
-Schritt "Beim Repository anmelden"
+# Nur konfigurieren, wenn der Runner es noch nicht ist. config.cmd bricht sonst
+# mit "already configured" ab - und für eine geplante Aufgabe (-AlsAufgabe)
+# braucht es gar keine Neukonfiguration, die startet nur das vorhandene run.cmd.
+$konfiguriert = Test-Path "$Ordner\.runner"
+if ($konfiguriert) {
+    Schritt "Runner ist bereits angemeldet"
+    Write-Host "Konfiguration übersprungen."
+    if ($AlsDienst) {
+        Write-Host "Hinweis: -AlsDienst richtet den Dienst bei der Konfiguration ein." -ForegroundColor Yellow
+        Write-Host "Dafür zuerst abmelden:  .\runner_einrichten.ps1 -Entfernen" -ForegroundColor Yellow
+        Write-Host "und danach erneut mit -AlsDienst." -ForegroundColor Yellow
+    }
+} else {
+    Schritt "Beim Repository anmelden"
+    # Kurzlebiges Token, direkt aus der API - es wird nirgends abgelegt.
+    $token = (gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token)
+    if (-not $token) { throw "Konnte kein Registrierungs-Token holen. Fehlt der 'repo'-Scope?" }
 
-# Kurzlebiges Token, direkt aus der API - es wird nirgends abgelegt.
-$token = (gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token)
-if (-not $token) { throw "Konnte kein Registrierungs-Token holen. Fehlt der 'repo'-Scope?" }
-
-# --runasservice installiert den Windows-Dienst gleich bei der Konfiguration.
-# Das ist der korrekte Windows-Weg - es gibt kein svc.cmd wie unter Linux.
-$labels = "self-hosted,windows,ebike"
-$dienstFlag = if ($AlsDienst) { " --runasservice" } else { "" }
-cmd /c "config.cmd --unattended --url https://github.com/$Repo --token $token --name `"$Name`" --labels $labels --work _work --replace$dienstFlag"
-if ($LASTEXITCODE -ne 0) { throw "Registrierung fehlgeschlagen." }
-Write-Host "Runner '$Name' registriert." -ForegroundColor Green
+    # --runasservice installiert den Windows-Dienst gleich bei der Konfiguration.
+    # Das ist der korrekte Windows-Weg - es gibt kein svc.cmd wie unter Linux.
+    $labels = "self-hosted,windows,ebike"
+    $dienstFlag = if ($AlsDienst) { " --runasservice" } else { "" }
+    cmd /c "config.cmd --unattended --url https://github.com/$Repo --token $token --name `"$Name`" --labels $labels --work _work --replace$dienstFlag"
+    if ($LASTEXITCODE -ne 0) { throw "Registrierung fehlgeschlagen." }
+    Write-Host "Runner '$Name' registriert." -ForegroundColor Green
+}
 
 # --- Dauerbetrieb einrichten -----------------------------------------------
 if ($AlsDienst) {
@@ -136,8 +149,15 @@ elseif ($AlsAufgabe) {
     Register-ScheduledTask -TaskName $aufgabe -Action $aktion -Trigger $ausloeser `
         -Settings $einst -Description "Startet den GitHub-Actions-Runner für ebike-deals" `
         -Force | Out-Null
-    Start-ScheduledTask -TaskName $aufgabe
-    Write-Host "Aufgabe '$aufgabe' angelegt und gestartet." -ForegroundColor Green
+    # Nicht sofort starten, wenn schon ein Runner läuft (etwa ein interaktiv
+    # gestarteter) - zwei Listener auf derselben Anmeldung streiten sich.
+    if (Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue) {
+        Write-Host "Aufgabe '$aufgabe' angelegt. Ein Runner läuft bereits - die" -ForegroundColor Green
+        Write-Host "Aufgabe übernimmt bei der nächsten Anmeldung."
+    } else {
+        Start-ScheduledTask -TaskName $aufgabe
+        Write-Host "Aufgabe '$aufgabe' angelegt und gestartet." -ForegroundColor Green
+    }
     Write-Host "Der Runner startet künftig automatisch bei Ihrer Anmeldung."
     Write-Host "Entfernen:  Unregister-ScheduledTask -TaskName $aufgabe -Confirm:`$false"
 }

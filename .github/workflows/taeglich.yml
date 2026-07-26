@@ -43,6 +43,13 @@ concurrency:
 permissions:
   contents: write
 
+# Python schreibt auf einem Windows-Runner sonst in cp1252, das an Umlauten und
+# Zeichen wie "→" abbricht. Auf den Linux-Runnern ist UTF-8 ohnehin Vorgabe -
+# diese Zeile macht beide gleich. (ci_check.py erzwingt es zusätzlich selbst,
+# falls jemand es außerhalb des Workflows aufruft.)
+env:
+  PYTHONUTF8: "1"
+
 jobs:
   aktualisieren:
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}

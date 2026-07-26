@@ -1,30 +1,24 @@
 name: Tägliche Aktualisierung
 
-# Läuft einmal täglich und schreibt den Preisverlauf zurück ins Repository.
+# Läuft einmal täglich, komplett auf GitHub-Runnern (kein eigener Rechner).
+#
+# WARUM SHARDING: Acht der 21 Shops weisen die Rechenzentrums-IP ab. Dagegen
+# helfen zwei Dinge zusammen - ein anderer Egress (Cloudflare WARP) UND ein
+# Chrome-TLS-Fingerabdruck (curl_cffi, IMPERSONATE). Einzeln reicht keines. Aber:
+# Auf EINER WARP-IP kippen die schwersten Shopify-Shops (upway, boc24) unter der
+# kumulierten Last wieder mit 429. Deshalb läuft der Scrape in mehreren Shards -
+# je Shard ein eigener GitHub-Job mit eigener WARP-IP -, sodass keine IP die
+# volle Shopify-Last trägt. Im Diagnose-/Test-Workflow gemessen: einzeln auf
+# frischer IP kommen alle Shops durch. Der Merge-Job führt die Shards zu einem
+# Bericht zusammen und schreibt Preisverlauf + Seite.
 #
 # Versioniert wird historie/YYYY-MM-DD.jsonl.xz — je Lauftag eine komprimierte,
-# danach unveränderliche Datei (~52 KB). preise.db entsteht daraus lokal neu.
-# Die SQLite-Datei selbst täglich zu committen wäre naheliegend, aber teuer:
-# sie wächst, und Git legt bei jedem Commit eine Kopie der ganzen Datei ab —
-# nach einem Jahr mehrere Gigabyte statt rund 23 MB.
-#
-# Bewusst NICHT actions/cache dafür: GitHub räumt Caches nach 7 Tagen ohne
-# Zugriff und unter Speicherdruck ab. Ein stiller Datenverlust wäre genau die
-# Fehlerklasse, die der Preisverlauf aufdecken soll.
-#
-# WO DER LAUF STATTFINDET entscheidet die Repository-Variable RUNNER_LABEL
-# (Standard ubuntu-latest). Acht der 21 Shops weisen die Rechenzentrums-IP der
-# GitHub-Runner ab (fünf mit 429, drei mit 403). Dagegen wirken zwei Schritte,
-# beide NUR auf GitHub-Runnern aktiv: der Egress läuft über Cloudflare WARP
-# (andere IP), und die Anfragen tragen per curl_cffi den TLS-Fingerabdruck von
-# Chrome (IMPERSONATE). Erst beides zusammen nehmen alle Shops die Anfrage an -
-# einzeln reicht keines (im Diagnose-Workflow gemessen). Ein self-hosteter Runner
-# (RUNNER_LABEL=self-hosted, Wohn-IP) braucht beides nicht und überspringt es.
+# danach unveränderliche Datei (~52 KB). preise.db entsteht daraus lokal neu; sie
+# täglich zu committen wäre teuer (Git legt jede Version voll ab).
 
 on:
   schedule:
     # 04:00 UTC = 06:00 deutsche Sommerzeit, 05:00 Winterzeit.
-    # GitHub verschiebt geplante Läufe unter Last, teils um 30+ Minuten.
     - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
@@ -46,60 +40,52 @@ concurrency:
 permissions:
   contents: write
 
-# Python schreibt auf einem Windows-Runner sonst in cp1252, das an Umlauten und
-# Zeichen wie "→" abbricht. Auf den Linux-Runnern ist UTF-8 ohnehin Vorgabe -
-# diese Zeile macht beide gleich. (ci_check.py erzwingt es zusätzlich selbst,
-# falls jemand es außerhalb des Workflows aufruft.)
 env:
   PYTHONUTF8: "1"
 
 jobs:
-  aktualisieren:
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
-    timeout-minutes: 120
-
-    # Ob ein veröffentlichbarer Bericht entstanden ist. Bewusst getrennt vom
-    # Erfolg der Plausibilitätsprüfung: Ein Teillauf (auf GitHub-IPs blocken
-    # acht Shops) liefert einen kleineren, aber gültigen Bericht - der gehört
-    # auf die Seite, auch wenn er nicht in die Historie geschrieben wird.
-    outputs:
-      bericht_bereit: ${{ steps.bewerten.outputs.bereit }}
-
-    defaults:
-      run:
-        # Auf einem selbst gehosteten Windows-Runner wäre die Vorgabe pwsh.
-        # Bash ist dort über Git für Windows vorhanden, und so bleiben die
-        # Schritte auf beiden Runner-Arten identisch.
-        shell: bash
-
+  # --- 1) Scrape in Shards, jeder mit eigener WARP-IP ----------------------
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Die fünf Shopify-Shops (upway, boc24, bikemarket24, ebikeonly,
+          # fahrradde) sind auf verschiedene Shards verteilt; die schwersten
+          # (boc24, upway) stehen allein, damit keine WARP-IP zu viel Shopify
+          # trägt. Der Rest ist gleichmäßig aufgeteilt.
+          - name: a
+            shops: "luckybike boc24 fahrrad24 radfieber"
+            render: true
+          - name: b
+            shops: "upway fahrradxxl bikeexchange ebikestock"
+            render: false
+          - name: c
+            shops: "ebikeonly fahrradde denfeld mhwbike"
+            render: false
+          - name: d
+            shops: "bikemarket24 lagerverkauf radwelt rad1"
+            render: false
+          - name: e
+            shops: "jobradloop bikeangebot nubuk bikediscount bike24"
+            render: false
+    name: scrape-${{ matrix.name }}
     steps:
-      - name: Repository auschecken
-        uses: actions/checkout@v4
-
-      - name: Python einrichten
-        # Nur auf GitHub-Runnern nötig, die mit leerer VM starten. Auf einem
-        # selbst gehosteten Rechner ist Python vorhanden - und setup-python ruft
-        # intern PowerShell auf, das dort das Nutzerprofil lädt und an einer
-        # restriktiven Execution-Policy scheitert. Das System-Python zu nehmen
-        # umgeht das, ohne eine Sicherheitseinstellung ändern zu müssen.
-        if: runner.environment == 'github-hosted'
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Python melden
-        run: python --version
-
-      - name: Abhängigkeiten installieren
+      - name: Abhängigkeiten
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Cloudflare WARP (nur GitHub-Runner)
-        # Verlegt den Egress von der abgewiesenen Azure-IP auf eine WARP-IP.
-        # Zusammen mit dem Chrome-Fingerabdruck (IMPERSONATE, beim Scrape-Schritt)
-        # akzeptieren die Shops die Anfrage. Auf self-hosted übersprungen.
-        if: runner.environment == 'github-hosted'
+      - name: Cloudflare WARP
+        # Eigener Egress je Shard. curl_cffi (IMPERSONATE, beim Scrape) allein
+        # reicht nicht - erst mit der WARP-IP zusammen nehmen die Shops an.
         run: |
           set -e
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
@@ -111,60 +97,84 @@ jobs:
           sudo systemctl start warp-svc || true
           sleep 3
           sudo warp-cli --accept-tos registration new \
-            || sudo warp-cli --accept-tos register \
-            || sudo warp-cli register || true
+            || sudo warp-cli --accept-tos register || sudo warp-cli register || true
           sudo warp-cli --accept-tos connect || sudo warp-cli connect
           sleep 8
-          curl -s https://www.cloudflare.com/cdn-cgi/trace | grep -E 'warp=|ip=' || true
-          # Ohne aktives WARP würde der Lauf auf der abgewiesenen IP landen und
-          # nur einen verworfenen Teilbericht liefern - dann lieber laut scheitern.
+          echo "Egress: $(curl -s https://api.ipify.org)"
           if ! curl -s https://www.cloudflare.com/cdn-cgi/trace | grep -q 'warp=on'; then
-            echo "::error::Cloudflare WARP nicht aktiv - Abbruch, sonst weisen die Shops die Runner-IP ab."
+            echo "::error::Cloudflare WARP nicht aktiv - die Shops würden die Runner-IP abweisen."
             exit 1
           fi
 
-      - name: Playwright installieren
-        if: inputs.render != false
+      - name: Playwright (nur Render-Shard)
+        if: ${{ matrix.render }}
         run: |
           pip install playwright
-          # --with-deps installiert Systempakete und braucht sudo; das gibt es
-          # nur auf den GitHub-Runnern. Auf dem eigenen Rechner ist Chromium
-          # nach dem ersten Mal ohnehin vorhanden.
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            python -m playwright install --with-deps chromium
-          else
-            python -m playwright install chromium
-          fi
+          python -m playwright install --with-deps chromium
 
-      - name: Angebote abrufen
-        id: scrape
-        # Ein Teilausfall soll nicht den ganzen Job beenden - was eingesammelt
-        # wurde, wird gleich danach auf Plausibilität geprüft.
-        continue-on-error: true
+      - name: Shard scrapen (${{ matrix.name }})
         env:
-          # Chrome-TLS-Fingerabdruck (curl_cffi) nur auf GitHub-Runnern. Deckt
-          # scrape UND Anreicherung ab, da beide im selben run.py-Prozess laufen.
-          # Lokal leer -> normaler httpx-Client (Wohn-IP braucht den Trick nicht).
-          IMPERSONATE: ${{ runner.environment == 'github-hosted' && 'chrome124' || '' }}
+          IMPERSONATE: chrome124
         run: |
-          python run.py \
+          RENDER=""
+          if [ "${{ matrix.render }}" = "true" ] && [ "${{ inputs.render }}" != "false" ]; then
+            RENDER="--render"
+          fi
+          python tools/scrape_shard.py ${{ matrix.shops }} \
+            --out "shard-${{ matrix.name }}.pkl" \
             --min-discount "${{ inputs.min_discount || '50' }}" \
-            --max-pages 8 \
-            ${{ inputs.render != false && '--render' || '' }} \
-            --json deals.json \
-            --quiet
-          echo "--- Zusammenfassung ---"
-          python -c "import json;d=json.load(open('deals.json',encoding='utf-8'));print(f\"{len(d['offers'])} Treffer aus {d['total_scanned']} geprueften Angeboten\")"
+            --max-pages 8 $RENDER
+
+      - name: Shard-Ergebnis ablegen
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.name }}
+          path: shard-${{ matrix.name }}.pkl
+          retention-days: 3
+
+  # --- 2) Shards zusammenführen: Bericht, Preisverlauf, Prüfung ------------
+  zusammenfuehren:
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      bericht_bereit: ${{ steps.bewerten.outputs.bereit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Abhängigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Shard-Ergebnisse holen
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Zusammenführen
+        # Bewertungen holt der Merge best-effort mit Chrome-Fingerabdruck; die
+        # Bewertungsquellen sind weniger streng als die Shops. Scheitert es,
+        # bleibt der Bericht ohne Bewertungen statt zu kippen.
+        env:
+          IMPERSONATE: chrome124
+        run: |
+          python tools/merge_report.py shards/*.pkl \
+            --out bericht.html --json deals.json \
+            --history preise.db --ratings bewertungen.json \
+            --min-discount "${{ inputs.min_discount || '50' }}"
 
       - name: Bericht bewerten
         id: bewerten
         if: always()
-        # Gibt es einen Bericht, der sich zu veröffentlichen lohnt? Eine
-        # Untergrenze von 50 Angeboten trennt einen echten (auch teilweisen)
-        # Lauf von einer Totalpanne - der Teillauf auf GitHub-IPs liefert rund
-        # 940, ein flächiger Adapter-Ausfall läge im einstelligen Bereich. Ohne
-        # diese Schranke könnte eine kaputte Ausgabe eine gute Live-Seite
-        # überschreiben.
+        # Eine Untergrenze von 50 Angeboten trennt einen echten Lauf von einer
+        # Totalpanne. Ohne diese Schranke könnte eine kaputte Ausgabe eine gute
+        # Live-Seite überschreiben.
         run: |
           if [ -s bericht.html ] && [ -s deals.json ]; then
             n=$(python -c "import json;print(len(json.load(open('deals.json',encoding='utf-8'))['offers']))")
@@ -181,10 +191,8 @@ jobs:
 
       - name: Ergebnis prüfen
         id: check
-        # Kein Abbruch des Jobs: Die Prüfung entscheidet nur, ob heute in die
-        # Historie geschrieben wird. Ein IP-bedingter Teilausfall soll den Lauf
-        # nicht rot färben (das gäbe täglich falschen Alarm), sondern eine
-        # sichtbare Warnung setzen.
+        # Kein Abbruch: Die Prüfung entscheidet nur, ob heute in die Historie
+        # geschrieben wird. Ein Teilausfall soll den Lauf nicht rot färben.
         continue-on-error: true
         run: python ci_check.py
 
@@ -199,8 +207,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Preisverlauf $(date -u +%Y-%m-%d): $(python -c "import json;print(len(json.load(open('deals.json',encoding='utf-8'))['offers']))") Angebote"
-          # Konkurrierende Commits (etwa ein lokaler Push) sind selten, aber
-          # ein Rebase ist billiger als ein fehlgeschlagener Job.
           git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
@@ -215,26 +221,15 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: Arbeitsverzeichnis aufräumen
-        if: always()
-        # Ein selbst gehosteter Runner behält sein Verzeichnis zwischen den
-        # Läufen. Ohne dieses Aufräumen bliebe der erzeugte Bericht liegen und
-        # eine spätere Prüfung könnte alte Daten für neue halten.
-        run: rm -f bericht.html deals.json
-
       - name: Prüfergebnis melden
         if: steps.check.outcome == 'failure'
         run: |
-          echo "::warning::Die Plausibilitätsprüfung ist angeschlagen - die Historie wurde heute nicht fortgeschrieben. Meist heißt das, dass Shops die Runner-IP abweisen. Ein self-hosted Runner (runner_einrichten.ps1) behebt das."
+          echo "::warning::Die Plausibilitätsprüfung ist angeschlagen - die Historie wurde heute nicht fortgeschrieben."
 
-  # Bericht als Webseite unter https://fortuenchen.github.io/ebike-deals/
-  # veröffentlichen. Läuft, sobald ein veröffentlichbarer Bericht entstand -
-  # auch bei einem Teillauf, denn eine aktuelle Teilansicht ist besser als eine
-  # veraltete Seite. Steuerbar über die Repository-Variable PUBLISH_PAGES;
-  # ohne sie bleibt alles beim Artefakt-Download.
+  # --- 3) Als Webseite veröffentlichen ------------------------------------
   veroeffentlichen:
-    needs: aktualisieren
-    if: vars.PUBLISH_PAGES == 'true' && needs.aktualisieren.outputs.bericht_bereit == 'true'
+    needs: zusammenfuehren
+    if: vars.PUBLISH_PAGES == 'true' && needs.zusammenfuehren.outputs.bericht_bereit == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -252,17 +247,12 @@ jobs:
       - name: Als Startseite ablegen
         run: |
           cp site/bericht.html site/index.html
-          # deals.json nicht mit veröffentlichen - die Seite zeigt den Bericht,
-          # nicht die Rohdaten.
           rm -f site/deals.json
-          # Verhindert, dass GitHub die Seite durch Jekyll verarbeitet.
           touch site/.nojekyll
 
       - name: Pages einrichten
         uses: actions/configure-pages@v5
         with:
-          # Aktiviert GitHub Pages beim ersten Lauf automatisch, sodass man es
-          # nicht zusätzlich in den Repository-Einstellungen umlegen muss.
           enablement: true
 
       - uses: actions/upload-pages-artifact@v3

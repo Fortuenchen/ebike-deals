@@ -1,5 +1,11 @@
 httpx>=0.27
 
+# TLS-/JA3-Fingerabdruck eines echten Chrome. Auf den GitHub-Runnern per
+# IMPERSONATE=chrome124 zugeschaltet: erst dieser Fingerabdruck lässt (zusammen
+# mit dem WARP-Egress) die anti-bot- und Shopify-Shops die Runner-Anfrage
+# annehmen. Lokal ungenutzt, aber klein und ohne Systemabhängigkeiten.
+curl_cffi>=0.7
+
 # Optional, nur für --render (lucky-bike.de). Nach der Installation zusätzlich:
 #   python -m playwright install chromium
 # playwright>=1.40

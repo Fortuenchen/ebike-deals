@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import lzma
+import os
 import random
 import subprocess
 import threading
@@ -27,6 +28,12 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+
+try:
+    # Optional: nur auf den GitHub-Runnern gebraucht (siehe Fetcher.__init__).
+    from curl_cffi import requests as cffi_requests
+except ImportError:
+    cffi_requests = None
 
 from .cachetags import LISTING, CacheTags, derive
 
@@ -111,13 +118,37 @@ class Fetcher:
         retries: int = 3,
         cache_ttl: float = 3600.0,
         allow_curl_fallback: bool = True,
+        impersonate: str | None = None,
     ):
-        self.client = httpx.Client(
-            headers=DEFAULT_HEADERS,
-            follow_redirects=True,
-            timeout=timeout,
-            http2=False,
-        )
+        # curl_cffi ahmt den TLS-/JA3-Fingerabdruck von Chrome nach. Zusammen mit
+        # einem unverdaechtigen Egress (Cloudflare WARP im Workflow) kommen so auch
+        # die Shops durch, die den nackten httpx-Fingerabdruck einer
+        # Rechenzentrums-IP mit 429/403 abweisen - gemessen: von einer WARP-IP
+        # schalten fahrrad24, bike-discount, mhw-bike, ebike-24 und alle fuenf
+        # Shopify-Shops erst mit diesem Fingerabdruck frei. Lokal (Wohn-IP) ist das
+        # unnoetig, daher nur ueber IMPERSONATE zugeschaltet.
+        imp = impersonate if impersonate is not None else os.environ.get("IMPERSONATE", "")
+        self.impersonate = imp if (imp and cffi_requests is not None) else ""
+        if self.impersonate:
+            self.client = cffi_requests.Session(
+                impersonate=self.impersonate,
+                allow_redirects=True,
+                timeout=timeout,
+                # Nur die Sprache mitgeben - UA und sec-ch-ua setzt die
+                # Impersonation selbst; ein zweiter, abweichender UA waere ein
+                # Widerspruch, den genau diese Schutzsysteme suchen.
+                headers={"Accept-Language": "de-DE,de;q=0.9,en;q=0.8"},
+            )
+            # Der cffi-Client IST schon der Fingerabdruck-Trick; der
+            # subprocess-curl-Fallback (nicht impersoniert) wuerde nichts beitragen.
+            allow_curl_fallback = False
+        else:
+            self.client = httpx.Client(
+                headers=DEFAULT_HEADERS,
+                follow_redirects=True,
+                timeout=timeout,
+                http2=False,
+            )
         self.delay = delay
         self.retries = retries
         self.cache_dir = cache_dir
@@ -364,7 +395,7 @@ class Fetcher:
                         return body
                 raise Blocked(f"HTTP {r.status_code} - Zugriff verweigert (Bot-Schutz)")
             if r.status_code == 404:
-                raise httpx.HTTPStatusError("404", request=r.request, response=r)
+                raise httpx.HTTPStatusError("404", request=httpx.Request("GET", url), response=r)
             if r.status_code == 429:
                 # Rate-Limit ist kein Ausschluss, sondern eine Bitte um Geduld.
                 # Auf einem GitHub-Runner teilen sich viele Nutzer eine IP,
@@ -372,7 +403,7 @@ class Fetcher:
                 # daran gescheitert, weil hier vorher pauschal 2-6 Sekunden
                 # gewartet und der Retry-After-Header ignoriert wurde.
                 last_exc = httpx.HTTPStatusError(
-                    "HTTP 429", request=r.request, response=r
+                    "HTTP 429", request=httpx.Request("GET", url), response=r
                 )
                 with self._lock:
                     verbraucht = self._rate_limit_spent.get(host, 0.0)
@@ -393,7 +424,7 @@ class Fetcher:
                 continue
             if r.status_code in (500, 502, 503, 504):
                 last_exc = httpx.HTTPStatusError(
-                    f"HTTP {r.status_code}", request=r.request, response=r
+                    f"HTTP {r.status_code}", request=httpx.Request("GET", url), response=r
                 )
                 time.sleep(2.0 * (attempt + 1))
                 continue

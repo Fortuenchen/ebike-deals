@@ -12,22 +12,20 @@ name: Tägliche Aktualisierung
 # Zugriff und unter Speicherdruck ab. Ein stiller Datenverlust wäre genau die
 # Fehlerklasse, die der Preisverlauf aufdecken soll.
 #
-# WO DER LAUF STATTFINDET entscheidet die Repository-Variable RUNNER_LABEL.
-# Standard ist ubuntu-latest. Dort weisen allerdings acht der 21 Shops die
-# Runner-IP ab (fünf mit 429, drei mit 403) — der Lauf liefert dann rund 940
-# statt 1700 Angebote und wird von der Plausibilitätsprüfung verworfen.
-# `runner_einrichten.ps1` setzt die Variable auf self-hosted.
+# WO DER LAUF STATTFINDET entscheidet die Repository-Variable RUNNER_LABEL
+# (Standard ubuntu-latest). Acht der 21 Shops weisen die Rechenzentrums-IP der
+# GitHub-Runner ab (fünf mit 429, drei mit 403). Dagegen wirken zwei Schritte,
+# beide NUR auf GitHub-Runnern aktiv: der Egress läuft über Cloudflare WARP
+# (andere IP), und die Anfragen tragen per curl_cffi den TLS-Fingerabdruck von
+# Chrome (IMPERSONATE). Erst beides zusammen nehmen alle Shops die Anfrage an -
+# einzeln reicht keines (im Diagnose-Workflow gemessen). Ein self-hosteter Runner
+# (RUNNER_LABEL=self-hosted, Wohn-IP) braucht beides nicht und überspringt es.
 
 on:
-  # Kein schedule/cron: Der Lauf wird lokal angestoßen. Eine Windows-Aufgabe
-  # (runner_einrichten.ps1 -AlsAufgabe) startet beim Hochfahren, stößt genau
-  # diesen Workflow an und lässt den self-hosted Runner einen Job abarbeiten -
-  # danach beendet er sich (run.cmd --once). Höchstens ein Lauf pro Tag.
-  #
-  # Ein GitHub-Cron passt dazu nicht: Der Runner ist zwischen den Läufen offline,
-  # ein zeitgesteuerter Job bliebe unbearbeitet in der Warteschlange hängen und
-  # würde später den falschen (veralteten) Lauf abholen. Manuell auslösbar bleibt
-  # der Lauf über workflow_dispatch (genau das nutzt die Windows-Aufgabe).
+  schedule:
+    # 04:00 UTC = 06:00 deutsche Sommerzeit, 05:00 Winterzeit.
+    # GitHub verschiebt geplante Läufe unter Last, teils um 30+ Minuten.
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       render:
@@ -97,6 +95,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Cloudflare WARP (nur GitHub-Runner)
+        # Verlegt den Egress von der abgewiesenen Azure-IP auf eine WARP-IP.
+        # Zusammen mit dem Chrome-Fingerabdruck (IMPERSONATE, beim Scrape-Schritt)
+        # akzeptieren die Shops die Anfrage. Auf self-hosted übersprungen.
+        if: runner.environment == 'github-hosted'
+        run: |
+          set -e
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp
+          sudo systemctl start warp-svc || true
+          sleep 3
+          sudo warp-cli --accept-tos registration new \
+            || sudo warp-cli --accept-tos register \
+            || sudo warp-cli register || true
+          sudo warp-cli --accept-tos connect || sudo warp-cli connect
+          sleep 8
+          curl -s https://www.cloudflare.com/cdn-cgi/trace | grep -E 'warp=|ip=' || true
+          # Ohne aktives WARP würde der Lauf auf der abgewiesenen IP landen und
+          # nur einen verworfenen Teilbericht liefern - dann lieber laut scheitern.
+          if ! curl -s https://www.cloudflare.com/cdn-cgi/trace | grep -q 'warp=on'; then
+            echo "::error::Cloudflare WARP nicht aktiv - Abbruch, sonst weisen die Shops die Runner-IP ab."
+            exit 1
+          fi
+
       - name: Playwright installieren
         if: inputs.render != false
         run: |
@@ -115,6 +141,11 @@ jobs:
         # Ein Teilausfall soll nicht den ganzen Job beenden - was eingesammelt
         # wurde, wird gleich danach auf Plausibilität geprüft.
         continue-on-error: true
+        env:
+          # Chrome-TLS-Fingerabdruck (curl_cffi) nur auf GitHub-Runnern. Deckt
+          # scrape UND Anreicherung ab, da beide im selben run.py-Prozess laufen.
+          # Lokal leer -> normaler httpx-Client (Wohn-IP braucht den Trick nicht).
+          IMPERSONATE: ${{ runner.environment == 'github-hosted' && 'chrome124' || '' }}
         run: |
           python run.py \
             --min-discount "${{ inputs.min_discount || '50' }}" \

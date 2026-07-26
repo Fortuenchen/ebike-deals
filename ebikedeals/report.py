@@ -273,6 +273,19 @@ def _history_block(o: Offer) -> str:
         bits.append('<span class="tag tag--low">Tiefstpreis</span>')
 
     spark = _sparkline(o.price_points)
+    if spark:
+        # Der Funken wird ein Knopf, der das Preisverlauf-Fenster oeffnet. Die
+        # Rohpunkte (Datum, Preis) reisen als Datenattribut mit, damit das
+        # Fenster ohne Server ein grosses Diagramm zeichnen kann.
+        pts = [[d, p] for d, p in (o.price_points or []) if isinstance(p, (int, float))]
+        data = _esc(json.dumps(pts, separators=(",", ":")))
+        low = _esc(_eur(o.price_min)) if o.price_min is not None else ""
+        spark = (
+            f'<button type="button" class="hist-trigger" data-hist="{data}" '
+            f'data-title="{_esc(o.title)}" data-cur="{_esc(_eur(o.price))}" '
+            f'data-low="{low}" title="Preisverlauf ansehen" '
+            f'aria-label="Preisverlauf ansehen">{spark}</button>'
+        )
     return f'<p class="hist">{"".join(bits)}{spark}</p>' if bits or spark else ""
 
 
@@ -601,6 +614,42 @@ a.size:hover {{ border-color:var(--accent); }}
   font-weight:600; }}
 .empty {{ color:var(--muted); }}
 footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
+
+/* Preisverlauf: Funken als Knopf + schwebendes Fenster */
+.hist-trigger {{ margin-left:auto; padding:2px 5px; border:0; background:none;
+  border-radius:7px; cursor:pointer; display:inline-flex; align-items:center;
+  transition:background .12s; }}
+.hist-trigger:hover, .hist-trigger:focus-visible {{ background:var(--chip); outline:none; }}
+.hist-trigger .spark {{ margin-left:0; }}
+.hist-trigger:hover .spark {{ color:var(--accent); }}
+.pricewin {{ position:fixed; right:16px; bottom:16px; z-index:60; width:340px;
+  max-width:calc(100vw - 32px); background:var(--card); border:1px solid var(--line);
+  border-radius:14px; box-shadow:0 12px 44px rgba(0,0,0,.34); overflow:hidden;
+  animation:pwrise .18s cubic-bezier(.2,.8,.2,1); }}
+@keyframes pwrise {{ from {{ transform:translateY(14px) scale(.98); opacity:0; }} }}
+.pricewin[hidden] {{ display:none; }}
+.pricewin__bar {{ display:flex; align-items:center; gap:6px; padding:9px 8px 9px 13px;
+  background:var(--chip); }}
+.pricewin__title {{ flex:1; font-size:.86rem; font-weight:600; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; }}
+.pricewin__btn {{ width:26px; height:26px; border:0; background:none; color:var(--muted);
+  font-size:1.15rem; line-height:1; cursor:pointer; border-radius:7px; }}
+.pricewin__btn:hover {{ background:var(--card); color:var(--fg); }}
+.pricewin__body {{ padding:12px 14px 14px; }}
+.pricewin.min {{ width:auto; }}
+.pricewin.min .pricewin__body {{ display:none; }}
+.pricewin.min .pricewin__title {{ max-width:150px; }}
+.pwstat {{ display:flex; flex-wrap:wrap; gap:4px 16px; margin:0 0 10px; font-size:.8rem;
+  color:var(--muted); }}
+.pwstat b {{ color:var(--fg); font-weight:600; }}
+.pwstat .up {{ color:var(--badge); }} .pwstat .down {{ color:var(--accent); }}
+.pw-area {{ fill:var(--accent); opacity:.12; }}
+.pw-line {{ fill:none; stroke:var(--accent); stroke-width:2; stroke-linejoin:round;
+  stroke-linecap:round; }}
+.pw-dot {{ fill:var(--card); stroke:var(--accent); stroke-width:2; }}
+.pw-min {{ stroke:var(--line); stroke-width:1; stroke-dasharray:3 3; }}
+.pw-lbl {{ fill:var(--muted); font-size:9px; }}
+.pw-lblv {{ fill:var(--fg); font-size:10px; font-weight:600; }}
 </style>
 </head>
 <body>
@@ -715,6 +764,15 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     Rabatt = 1 − Verkaufspreis / Streichpreis (UVP bzw. shopeigener Referenzpreis).
     Preise und Verfügbarkeit ändern sich laufend – bitte im Shop prüfen.
   </footer>
+</div>
+
+<div class="pricewin" id="pricewin" hidden>
+  <div class="pricewin__bar">
+    <span class="pricewin__title" id="pwTitle">Preisverlauf</span>
+    <button class="pricewin__btn" id="pwMin" type="button" title="Minimieren/Öffnen" aria-label="Minimieren">–</button>
+    <button class="pricewin__btn" id="pwClose" type="button" title="Schließen" aria-label="Schließen">×</button>
+  </div>
+  <div class="pricewin__body" id="pwBody"></div>
 </div>
 <script>
 (function () {{
@@ -1065,6 +1123,54 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   }});
   // Back/forward through shared links.
   window.addEventListener('hashchange', function () {{ readState(); apply(); }});
+
+  // --- Preisverlauf-Fenster ------------------------------------------------
+  var pw = document.getElementById('pricewin');
+  var pwBody = document.getElementById('pwBody');
+  var pwTitle = document.getElementById('pwTitle');
+  function pwEur(n) {{ return Math.round(n).toLocaleString('de-DE') + ' \\u20ac'; }}
+  function pwChart(pts) {{
+    var W = 300, H = 132, PL = 8, PR = 10, PT = 16, PB = 20, n = pts.length;
+    var vals = pts.map(function (p) {{ return p[1]; }});
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), span = (hi - lo) || 1;
+    var X = function (i) {{ return PL + (n === 1 ? (W - PL - PR) / 2 : i * (W - PL - PR) / (n - 1)); }};
+    var Y = function (v) {{ return PT + (1 - (v - lo) / span) * (H - PT - PB); }};
+    var line = pts.map(function (p, i) {{ return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[1]).toFixed(1); }}).join(' ');
+    var area = 'M' + X(0).toFixed(1) + ' ' + (H - PB) + ' ' + line.slice(1) + ' L' + X(n - 1).toFixed(1) + ' ' + (H - PB) + ' Z';
+    var s = '<svg class="pw-chart" viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Preisverlauf-Diagramm">';
+    s += '<line class="pw-min" x1="' + PL + '" y1="' + Y(lo).toFixed(1) + '" x2="' + (W - PR) + '" y2="' + Y(lo).toFixed(1) + '"/>';
+    s += '<path class="pw-area" d="' + area + '"/><path class="pw-line" d="' + line + '"/>';
+    pts.forEach(function (p, i) {{
+      if (i === 0 || i === n - 1 || p[1] === lo) s += '<circle class="pw-dot" cx="' + X(i).toFixed(1) + '" cy="' + Y(p[1]).toFixed(1) + '" r="3"/>';
+    }});
+    s += '<text class="pw-lblv" x="' + (W - PR) + '" y="' + (Y(pts[n - 1][1]) - 6).toFixed(1) + '" text-anchor="end">' + pwEur(pts[n - 1][1]) + '</text>';
+    s += '<text class="pw-lbl" x="' + PL + '" y="' + (H - 6) + '">' + pts[0][0] + '</text>';
+    s += '<text class="pw-lbl" x="' + (W - PR) + '" y="' + (H - 6) + '" text-anchor="end">' + pts[n - 1][0] + '</text>';
+    return s + '</svg>';
+  }}
+  function pwOpen(btn) {{
+    var pts;
+    try {{ pts = JSON.parse(btn.getAttribute('data-hist')); }} catch (e) {{ return; }}
+    if (!pts || pts.length < 2) return;
+    pwTitle.textContent = btn.getAttribute('data-title') || 'Preisverlauf';
+    var first = pts[0][1], last = pts[pts.length - 1][1], diff = last - first;
+    var cls = diff < 0 ? 'down' : (diff > 0 ? 'up' : ''), arr = diff < 0 ? '\\u25bc' : (diff > 0 ? '\\u25b2' : '\\u00b1');
+    var h = '<p class="pwstat"><span>Aktuell <b>' + (btn.getAttribute('data-cur') || pwEur(last)) + '</b></span>';
+    if (btn.getAttribute('data-low')) h += '<span>Tiefstpreis <b>' + btn.getAttribute('data-low') + '</b></span>';
+    if (diff) h += '<span class="' + cls + '">' + arr + ' <b>' + pwEur(Math.abs(diff)) + '</b> seit ' + pts[0][0] + '</span>';
+    h += '<span>' + pts.length + ' Messpunkte</span></p>';
+    pwBody.innerHTML = h + pwChart(pts);
+    pw.hidden = false;
+    pw.classList.remove('min');
+  }}
+  grid.addEventListener('click', function (e) {{
+    var btn = e.target.closest ? e.target.closest('.hist-trigger') : null;
+    if (btn) {{ e.preventDefault(); pwOpen(btn); }}
+  }});
+  document.getElementById('pwClose').addEventListener('click', function () {{ pw.hidden = true; }});
+  document.getElementById('pwMin').addEventListener('click', function () {{ pw.classList.toggle('min'); }});
+  pwTitle.addEventListener('click', function () {{ pw.classList.remove('min'); }});
+  document.addEventListener('keydown', function (e) {{ if (e.key === 'Escape' && !pw.hidden) pw.hidden = true; }});
 
   readState();
   apply();

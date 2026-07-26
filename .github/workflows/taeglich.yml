@@ -71,6 +71,9 @@ jobs:
           - name: e
             shops: "jobradloop bikeangebot nubuk bikediscount bike24"
             render: false
+            # Dieser (leichte) Shard holt nebenbei die Bewertungen ALLER Shops,
+            # damit das nicht den Merge aufhält - läuft so parallel zu upway.
+            ratings: true
     name: scrape-${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -120,16 +123,28 @@ jobs:
           if [ "${{ matrix.render }}" = "true" ] && [ "${{ inputs.render }}" != "false" ]; then
             RENDER="--render"
           fi
+          RATINGS=""
+          if [ "${{ matrix.ratings }}" = "true" ]; then
+            RATINGS="--ratings-out bewertungen.json"
+          fi
           python tools/scrape_shard.py ${{ matrix.shops }} \
             --out "shard-${{ matrix.name }}.pkl" \
             --min-discount "${{ inputs.min_discount || '50' }}" \
-            --max-pages 8 $RENDER
+            --max-pages 8 $RENDER $RATINGS
 
       - name: Shard-Ergebnis ablegen
         uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.name }}
           path: shard-${{ matrix.name }}.pkl
+          retention-days: 3
+
+      - name: Bewertungen ablegen (nur Ratings-Shard)
+        if: ${{ matrix.ratings }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bewertungen
+          path: bewertungen.json
           retention-days: 3
 
   # --- 2) Shards zusammenführen: Bericht, Preisverlauf, Prüfung ------------
@@ -157,10 +172,19 @@ jobs:
           path: shards
           merge-multiple: true
 
+      - name: Bewertungen holen (vom Ratings-Shard)
+        # Der frische Cache aus Shard e. Fehlt er (Shard-Fehler), holt der Merge
+        # die Bewertungen selbst nach - daher continue-on-error statt Abbruch.
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: bewertungen
+          path: .
+
       - name: Zusammenführen
-        # Bewertungen holt der Merge best-effort mit Chrome-Fingerabdruck; die
-        # Bewertungsquellen sind weniger streng als die Shops. Scheitert es,
-        # bleibt der Bericht ohne Bewertungen statt zu kippen.
+        # bewertungen.json ist bereits frisch (aus dem Shard); merge_report.py
+        # liest den Cache dann nur noch. Fehlt er, wird best-effort nachgeholt
+        # (IMPERSONATE für den Fall, dass doch gefetcht werden muss).
         env:
           IMPERSONATE: chrome124
         run: |

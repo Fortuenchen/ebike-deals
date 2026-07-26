@@ -31,6 +31,10 @@ def main() -> int:
     ap.add_argument("--render", action="store_true", help="JS-Listings rendern (lucky-bike)")
     ap.add_argument("--min-discount", type=float, default=50.0)
     ap.add_argument("--max-pages", type=int, default=8)
+    ap.add_argument("--ratings-out", type=Path, default=None, metavar="PFAD",
+                    help="Zusaetzlich Bewertungen ALLER Shops holen und als Cache "
+                         "ablegen (laeuft so parallel zu den anderen Shards, statt "
+                         "den Merge aufzuhalten). Nur EIN Shard sollte das tun.")
     a = ap.parse_args()
 
     # Bewusst OHNE history_db und ratings_cache: Preisverlauf und Bewertungen
@@ -47,6 +51,25 @@ def main() -> int:
     report = run(config)
 
     a.out.write_bytes(pickle.dumps(report.results))
+
+    # Bewertungen ALLER Shops holen (nicht nur dieses Shards) - der Merge liest
+    # den frischen Cache dann nur noch, statt selbst zu fetchen. So ueberlappt
+    # der Abruf mit den schweren Shards, statt hinterher den Merge aufzuhalten.
+    if a.ratings_out:
+        from ebikedeals import ratings as ratings_mod
+        from ebikedeals.adapters import ADAPTERS
+        from ebikedeals.net import Fetcher
+        from ebikedeals.robots import RobotsCache
+
+        print(f"Bewertungen aller Shops -> {a.ratings_out}", file=sys.stderr)
+        rf = Fetcher(delay=0.8)
+        rf.robots = RobotsCache(rf)
+        try:
+            ratings_mod.collect([c() for c in ADAPTERS], rf, a.ratings_out)
+        except Exception as e:
+            print(f"Bewertungen fehlgeschlagen: {type(e).__name__}: {e}", file=sys.stderr)
+        finally:
+            rf.close()
 
     offers = sum(len(r.offers) for r in report.results)
     scanned = sum(r.scanned for r in report.results)

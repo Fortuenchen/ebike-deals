@@ -9,6 +9,7 @@ nicht die genaue Angebotszahl.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -30,6 +31,29 @@ net.RATE_LIMIT_BUDGET_PER_HOST = 20.0
 
 def main() -> None:
     f = Fetcher(delay=1.0, timeout=45)
+
+    # curl_cffi tauscht den TLS-/JA3-Fingerabdruck gegen den eines echten Chrome.
+    # Manche 403 kommen nicht von der IP, sondern vom Fingerabdruck der
+    # Bibliothek (httpx/curl). IMPERSONATE=chrome124 setzt den cffi-Client als
+    # primären Client ein - der Rest des Fetchers (Cache, robots, 429) bleibt.
+    impersonate = os.environ.get("IMPERSONATE", "")
+    if impersonate:
+        try:
+            from curl_cffi import requests as cffi
+
+            f.client.close()
+            f.client = cffi.Session(
+                impersonate=impersonate,
+                allow_redirects=True,
+                headers={"Accept-Language": "de-DE,de;q=0.9,en;q=0.8"},
+            )
+            # Der cffi-Client IST der Trick; der subprocess-curl-Fallback (nicht
+            # impersoniert) würde das Ergebnis nur verwässern.
+            f.allow_curl_fallback = False
+            print(f"# curl_cffi aktiv, impersonate={impersonate}")
+        except ImportError:
+            print("# curl_cffi nicht installiert - fahre mit httpx fort")
+
     f.robots = RobotsCache(f)
 
     print(f"{'shop':14} {'ergebnis':9} detail")

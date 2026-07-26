@@ -7,7 +7,7 @@ import json
 import math
 import re
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .affiliate import Partnerlinks
@@ -121,6 +121,18 @@ def _rating_badges(entries, compact: bool = False) -> str:
     return "".join(out)
 
 
+def _monday_iso() -> str:
+    """ISO-Datum des Montags dieser Woche - Grenze für 'Neu diese Woche'.
+
+    Der 00:00-Montagslauf schreibt keinen neuen Tag (das macht der Mittagslauf),
+    aber die Grenze wird beim Rendern berechnet: Ab Montag zählen nur noch
+    Angebote als neu, die seit diesem Montag zum ersten Mal auftauchten - das
+    Fenster setzt sich damit jede Woche von selbst zurück.
+    """
+    t = date.today()
+    return (t - timedelta(days=t.weekday())).isoformat()
+
+
 def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> str:
     d = o.effective_discount_pct or 0
     # Partnerlink nur fuer den Hauptlink. Die Groessenlinks von bikeexchange
@@ -188,11 +200,29 @@ def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> 
     # Everything the search box should match, lower-cased once at build time so
     # filtering stays a substring test even with hundreds of cards.
     haystack = " ".join(
-        [o.title, o.brand, o.shop, o.condition, o.note, o.availability]
+        [o.title, o.brand, o.shop, o.condition, o.note, o.availability,
+         o.motor, o.drivetrain, o.brakes, o.wheel_size]
         + o.sizes
         + ([f"{o.battery_wh}wh"] if o.battery_wh else [])
         + [x["ort"] for x in orte]
     ).lower()
+
+    # Datenblatt-Merkmale + "gelistet seit" als kleine Zeile unter den Preisen.
+    metabits = []
+    if o.motor:
+        metabits.append(f'<span class="spec">{_esc(o.motor)}</span>')
+    if o.drivetrain:
+        metabits.append(f'<span class="spec">{_esc(o.drivetrain)}</span>')
+    if o.wheel_size:
+        metabits.append(f'<span class="spec">{_esc(o.wheel_size)}</span>')
+    if o.brakes:
+        metabits.append(f'<span class="spec">{_esc(o.brakes)} Bremse</span>')
+    if o.first_seen and len(o.first_seen) == 10:
+        metabits.append(
+            f'<span class="listed">gelistet seit {o.first_seen[8:10]}.{o.first_seen[5:7]}.</span>'
+        )
+    metaline = f'<p class="speclist">{"".join(metabits)}</p>' if metabits else ""
+    neu = bool(o.first_seen and o.first_seen >= _monday_iso())
 
     return f"""
     <article class="card" data-shop="{_esc(o.shop)}" data-discount="{d}" data-price="{o.price}"
@@ -206,8 +236,11 @@ def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> 
              data-sizes="{_esc('|'.join(_size_keys(o)))}"
              data-orte="{_esc(ort_coords)}"
              data-vorort="{'1' if o.branches else ('0' if orte else '')}"
+             data-motor="{_esc(o.motor)}" data-drive="{_esc(o.drivetrain)}"
+             data-brake="{_esc(o.brakes)}" data-wheel="{_esc(o.wheel_size)}"
+             data-newweek="{'1' if neu else '0'}"
              data-search="{_esc(haystack)}">
-      <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}</div>
+      <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}{'<span class="badge badge--new">Neu</span>' if neu else ''}</div>
       <div class="body">
         <p class="shop">{_esc(o.shop)} {avail}{_rating_badges(ratings, compact=True)}</p>
         <h3><a href="{_esc(ziel)}" target="_blank" rel="noopener"{partner_mark}>{_esc(o.title)}</a></h3>
@@ -217,6 +250,7 @@ def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> 
           {saving}
           {battery}
         </p>
+        {metaline}
         {ortszeile}
         {_history_block(o)}
         <p class="sizes"><span class="lbl">Größen/Rahmenhöhen:</span> {sizes}</p>
@@ -444,6 +478,27 @@ def _render_html(report: RunReport) -> str:
     )
     n_vorort = sum(1 for o in offers if o.branches)
     n_orte = len(mit_angebot)
+
+    # Datenblatt-Filter: je Merkmal ein Dropdown, aber nur wenn es Werte gibt.
+    monday = _monday_iso()
+    n_newweek = sum(1 for o in offers if o.first_seen and o.first_seen >= monday)
+
+    def _spec_select(getter, sid, label):
+        items = Counter(v for o in offers if (v := getter(o)))
+        if not items:
+            return ""
+        opts = "".join(
+            f'<option value="{_esc(v)}">{_esc(v)} ({n})</option>'
+            for v, n in sorted(items.items())
+        )
+        return (f'<label class="sel">{label}<select id="{sid}">'
+                f'<option value="">alle</option>{opts}</select></label>')
+
+    sel_motor = _spec_select(lambda o: o.motor, "fMotor", "Motor")
+    sel_drive = _spec_select(lambda o: o.drivetrain, "fDrive", "Schaltung")
+    sel_brake = _spec_select(lambda o: o.brakes, "fBrake", "Bremsen")
+    sel_wheel = _spec_select(lambda o: o.wheel_size, "fWheel", "Radgröße")
+
     map_svg = _karte(offers)
 
     hs = report.history_stats
@@ -650,6 +705,9 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
 .pw-min {{ stroke:var(--line); stroke-width:1; stroke-dasharray:3 3; }}
 .pw-lbl {{ fill:var(--muted); font-size:9px; }}
 .pw-lblv {{ fill:var(--fg); font-size:10px; font-weight:600; }}
+.speclist {{ margin:3px 0 0; display:flex; flex-wrap:wrap; gap:5px; align-items:center; }}
+.listed {{ font-size:.74rem; color:var(--muted); margin-left:auto; white-space:nowrap; }}
+.badge--new {{ top:auto; bottom:10px; left:10px; background:var(--accent); }}
 </style>
 </head>
 <body>
@@ -745,6 +803,11 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
       Angebote ohne passende Angabe ausblenden</label>
   </div>
 
+  <div class="controls">
+    {sel_drive}{sel_motor}{sel_brake}{sel_wheel}
+    <label class="toggle"><input type="checkbox" id="newWeek"> Neu diese Woche ({n_newweek})</label>
+  </div>
+
   <div class="filters">
     <button class="chip chip--all" id="toggleAll">Alle Shops abwählen</button>
     {shop_chips}
@@ -797,6 +860,11 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   var strict = document.getElementById('strict');
   var estimate = document.getElementById('estimate');
   var onlyNew = document.getElementById('onlyNew');
+  var newWeek = document.getElementById('newWeek');
+  var fMotor = document.getElementById('fMotor');
+  var fDrive = document.getElementById('fDrive');
+  var fBrake = document.getElementById('fBrake');
+  var fWheel = document.getElementById('fWheel');
   var toggleAll = document.getElementById('toggleAll');
   var clearSizes = document.getElementById('clearSizes');
   var count = document.getElementById('count');
@@ -933,6 +1001,11 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     cards.forEach(function (card) {{
       var ok = shops ? !!shops[card.dataset.shop] : false;
       if (ok && onlyNew.checked) ok = card.dataset.condition === 'new';
+      if (ok && newWeek && newWeek.checked) ok = card.dataset.newweek === '1';
+      if (ok && fMotor && fMotor.value) ok = card.dataset.motor === fMotor.value;
+      if (ok && fDrive && fDrive.value) ok = card.dataset.drive === fDrive.value;
+      if (ok && fBrake && fBrake.value) ok = card.dataset.brake === fBrake.value;
+      if (ok && fWheel && fWheel.value) ok = card.dataset.wheel === fWheel.value;
       if (ok && lo !== null) ok = parseFloat(card.dataset.price) >= lo;
       if (ok && hi !== null) ok = parseFloat(card.dataset.price) <= hi;
       if (ok && sizes) {{
@@ -1111,7 +1184,7 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     }});
   }});
 
-  [sort, onlyNew, strict, estimate, radiusSel, nurVorOrt].forEach(function (el) {{
+  [sort, onlyNew, strict, estimate, radiusSel, nurVorOrt, newWeek, fMotor, fDrive, fBrake, fWheel].filter(Boolean).forEach(function (el) {{
     el.addEventListener('change', apply);
   }});
   q.addEventListener('keydown', function (e) {{

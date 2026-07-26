@@ -15,7 +15,7 @@ from .model import Offer, ShopResult, detect_condition, parse_battery_wh
 from .net import Blocked, Disallowed, Fetcher
 from .render import Renderer
 from .robots import RobotsCache
-from .sizes import enrich, read_battery_wh, read_og_image, read_prices
+from .sizes import enrich, read_battery_wh, read_og_image, read_prices, read_specs, specs_from_text
 
 
 @dataclass
@@ -182,6 +182,12 @@ def _scrape_shop(
                 )
                 if offer.battery_wh is None:
                     offer.battery_wh = parse_battery_wh(offer.title, offer.note)
+                # Datenblatt-Merkmale, soweit schon im Titel/Notiz erkennbar
+                # (breite Abdeckung); die Produktseite füllt den Rest.
+                _t = specs_from_text(f"{offer.title} {offer.note}")
+                offer.motor = offer.motor or _t["motor"]
+                offer.wheel_size = offer.wheel_size or _t["wheel_size"]
+                offer.drivetrain = offer.drivetrain or _t["drivetrain"]
                 if offer.condition and offer.condition.lower() not in offer.note.lower():
                     offer.note = " · ".join(filter(None, [offer.note, offer.condition]))
                 hits.append(offer)
@@ -230,6 +236,13 @@ def _scrape_shop(
                 # Likewise free: rescues listings that build their thumbnails
                 # in JavaScript (nubuk), so the static listing HTML had none.
                 offer.image = read_og_image(html)
+            if not (offer.drivetrain and offer.motor and offer.brakes and offer.wheel_size):
+                # Datenblatt der Produktseite - füllt, was der Titel nicht hergab.
+                _s = read_specs(html)
+                offer.drivetrain = offer.drivetrain or _s["drivetrain"]
+                offer.motor = offer.motor or _s["motor"]
+                offer.brakes = offer.brakes or _s["brakes"]
+                offer.wheel_size = offer.wheel_size or _s["wheel_size"]
             _cross_check_price(offer, html)
             checked += 1
 

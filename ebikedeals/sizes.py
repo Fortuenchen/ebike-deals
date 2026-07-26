@@ -275,6 +275,118 @@ def read_og_image(html: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Datenblatt-Merkmale: Schaltungstyp, Motor, Bremsen, Radgröße
+# ---------------------------------------------------------------------------
+# Motor-eigene Marken (eindeutig ein Antrieb, kein Schaltungshersteller).
+_MOTOR_BRANDS = re.compile(
+    r"\b(Bosch|Yamaha|Brose|Bafang|Fazua|Panasonic|Mahle|TQ|Pinion|Neodrives|"
+    r"Ananda|Impulse|Continental|Specialized)\b", re.I)
+# Shimano baut Motor UND Schaltung - als Motor nur mit STEPS/EP-Kennung zählen.
+_MOTOR_SHIMANO = re.compile(r"Shimano\s*(?:STEPS|EP\s?\d|E\d{3,4}|DU[- ])", re.I)
+_HUB = re.compile(r"\b(Nabenschaltung|Nexus|Inter[- ]?\d|Enviolo|NuVinci|Rohloff|Alfine)\b", re.I)
+_DERAIL = re.compile(
+    r"\b(Kettenschaltung|Schaltwerk|Kassette|Umwerfer|Deore|SLX|XTR?|Alivio|Acera|"
+    r"Altus|Tourney|Cues|GRX|Microshift|Sensah|Advent|SRAM\s*(?:GX|NX|SX|X0|X1))\b", re.I)
+_WHEEL = re.compile(r"\b(20|24|26|27[.,]5|28|29)\s*(?:zoll|inch|[\"″'])", re.I)
+
+
+def _motor_of(text: str) -> str:
+    if _MOTOR_SHIMANO.search(text):
+        return "Shimano"
+    m = _MOTOR_BRANDS.search(text or "")
+    return m.group(1)[0].upper() + m.group(1)[1:] if m else ""
+
+
+def _wheel_of(text: str) -> str:
+    m = _WHEEL.search(text or "")
+    return f'{m.group(1).replace(",", ".")}"' if m else ""
+
+
+def _drivetrain_of(text: str) -> str:
+    if _HUB.search(text or ""):
+        return "Nabenschaltung"
+    if _DERAIL.search(text or ""):
+        return "Kettenschaltung"
+    return ""
+
+
+def _brakes_of(text: str) -> str:
+    t = (text or "").lower()
+    if "hydraul" in t:
+        return "hydraulisch"
+    if "mechan" in t or "seilzug" in t:
+        return "mechanisch"
+    return ""
+
+
+def specs_from_text(text: str) -> dict:
+    """Merkmale, die schon im Titel/Notiz stehen - breite Abdeckung ohne Fetch."""
+    return {
+        "motor": _motor_of(text),
+        "wheel_size": _wheel_of(text),
+        "drivetrain": _drivetrain_of(text),
+    }
+
+
+def _spec_pairs(doc) -> list[tuple[str, str]]:
+    """Label/Wert-Paare aus den üblichen Datenblatt-Formaten (wie read_battery_wh)."""
+    pairs: list[tuple[str, str]] = []
+    for row in doc.find_all("tr") + doc.find_all("li"):
+        cells = row.find_all("th") + row.find_all("td") + row.find_all("dt") + row.find_all("dd")
+        if len(cells) >= 2:
+            pairs.append((cells[0].text, " ".join(c.text for c in cells[1:])))
+    for dl in doc.find_all("dl"):
+        kids = [c for c in dl.children if c.tag in ("dt", "dd")]
+        for i, node in enumerate(kids):
+            if node.tag == "dt" and i + 1 < len(kids) and kids[i + 1].tag == "dd":
+                pairs.append((node.text, kids[i + 1].text))
+    for lab in doc.find_by_class_prefix("properties-label"):
+        parent = lab.parent
+        if parent is None:
+            continue
+        sibs = [c for c in parent.children if c.tag != "#text"]
+        try:
+            idx = sibs.index(lab)
+        except ValueError:
+            continue
+        if idx + 1 < len(sibs):
+            pairs.append((lab.text, sibs[idx + 1].text))
+    return pairs
+
+
+def read_specs(html: str) -> dict:
+    """Schaltungstyp/Motor/Bremsen/Radgröße aus dem Datenblatt der Produktseite.
+
+    Erst gezielt über Label (z. B. "Schaltungs-Typ", "Motor", "Bremse"), dann
+    als Rückfall aus dem gesamten Datenblatt-Text (Schaltwerk+Kassette ⇒
+    Kettenschaltung usw.). Leere Werte, wo der Shop nichts ausweist.
+    """
+    doc = parse(html)
+    pairs = _spec_pairs(doc)
+    out = {"drivetrain": "", "motor": "", "brakes": "", "wheel_size": ""}
+    for label, value in pairs:
+        l = label.lower()
+        if not out["drivetrain"] and "schalt" in l and ("typ" in l or "art" in l):
+            if "naben" in value.lower():
+                out["drivetrain"] = "Nabenschaltung"
+            elif "ketten" in value.lower():
+                out["drivetrain"] = "Kettenschaltung"
+        if not out["motor"] and ("motor" in l or "antrieb" in l):
+            out["motor"] = _motor_of(value)
+        if not out["brakes"] and "brems" in l:
+            out["brakes"] = _brakes_of(value)
+        if not out["wheel_size"] and ("laufrad" in l or "radgr" in l or "reifen" in l or "zoll" in l):
+            out["wheel_size"] = _wheel_of(value)
+
+    whole = " ".join(f"{k} {v}" for k, v in pairs)
+    out["drivetrain"] = out["drivetrain"] or _drivetrain_of(whole)
+    out["motor"] = out["motor"] or _motor_of(whole)
+    out["brakes"] = out["brakes"] or _brakes_of(whole)
+    out["wheel_size"] = out["wheel_size"] or _wheel_of(whole)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Cross-checking the listing price against the product page
 # ---------------------------------------------------------------------------
 def read_prices(html: str) -> tuple[float | None, float | None]:

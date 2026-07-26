@@ -49,6 +49,13 @@ class Offer:
     branches: list[str] = field(default_factory=list)
     note: str = ""
 
+    # -- Datenblatt-Merkmale, aus Titel bzw. Produktseite gewonnen. Abdeckung
+    #    teilweise: nur wo der Shop es ausweist (wie battery_wh).
+    drivetrain: str = ""     # "Kettenschaltung" / "Nabenschaltung"
+    motor: str = ""          # Motor-Hersteller, z. B. "Bosch"
+    brakes: str = ""         # "hydraulisch" / "mechanisch"
+    wheel_size: str = ""     # z. B. '29"'
+
     # -- price history, filled by the history store after scraping -------
     first_seen: str = ""          # ISO date this URL was first recorded
     price_prev: float | None = None   # price at the previous run

@@ -33,6 +33,7 @@ param(
     [string]$Ordner  = "$env:USERPROFILE\actions-runner",
     [string]$Name    = "$env:COMPUTERNAME-ebike",
     [switch]$AlsDienst,
+    [switch]$AlsAufgabe,
     [switch]$Entfernen
 )
 
@@ -44,10 +45,14 @@ function Schritt($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 if ($Entfernen) {
     Schritt "Runner entfernen"
     if (-not (Test-Path $Ordner)) { Write-Host "Nichts zu entfernen."; exit 0 }
+    # Geplante Aufgabe entfernen, falls vorhanden.
+    Unregister-ScheduledTask -TaskName "GitHubRunner-ebike" -Confirm:$false `
+        -ErrorAction SilentlyContinue
     Push-Location $Ordner
     try {
         $token = (gh api -X POST "repos/$Repo/actions/runners/remove-token" --jq .token)
-        if (Test-Path ".\svc.sh") { .\svc.sh uninstall }
+        # config.cmd remove meldet den Runner ab und deinstalliert den Dienst,
+        # falls er als solcher lief.
         cmd /c "config.cmd remove --token $token"
         Write-Host "Runner abgemeldet." -ForegroundColor Green
     } finally { Pop-Location }
@@ -102,22 +107,46 @@ Schritt "Beim Repository anmelden"
 $token = (gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token)
 if (-not $token) { throw "Konnte kein Registrierungs-Token holen. Fehlt der 'repo'-Scope?" }
 
+# --runasservice installiert den Windows-Dienst gleich bei der Konfiguration.
+# Das ist der korrekte Windows-Weg - es gibt kein svc.cmd wie unter Linux.
 $labels = "self-hosted,windows,ebike"
-cmd /c "config.cmd --unattended --url https://github.com/$Repo --token $token --name `"$Name`" --labels $labels --work _work --replace"
+$dienstFlag = if ($AlsDienst) { " --runasservice" } else { "" }
+cmd /c "config.cmd --unattended --url https://github.com/$Repo --token $token --name `"$Name`" --labels $labels --work _work --replace$dienstFlag"
 if ($LASTEXITCODE -ne 0) { throw "Registrierung fehlgeschlagen." }
 Write-Host "Runner '$Name' registriert." -ForegroundColor Green
 
-# --- Starten ---------------------------------------------------------------
+# --- Dauerbetrieb einrichten -----------------------------------------------
 if ($AlsDienst) {
-    Schritt "Als Dienst einrichten"
-    cmd /c "svc.cmd install"
-    cmd /c "svc.cmd start"
-    Write-Host "Dienst läuft. Er startet künftig automatisch mit Windows." -ForegroundColor Green
-} else {
-    Schritt "Fertig"
-    Write-Host "Runner ist registriert, läuft aber noch nicht."
-    Write-Host "  Interaktiv starten:  cd `"$Ordner`"; .\run.cmd"
-    Write-Host "  Als Dienst (Admin):  .\runner_einrichten.ps1 -AlsDienst"
+    Schritt "Als Dienst"
+    Write-Host "Dienst installiert und gestartet." -ForegroundColor Green
+    Write-Host "ACHTUNG: Der Dienst läuft als Systemkonto und sieht Ihren PATH nicht -"
+    Write-Host "Python, Git-Bash und Chromium müssen dann systemweit erreichbar sein."
+    Write-Host "Wenn die Jobs 'python nicht gefunden' melden, stattdessen -AlsAufgabe nutzen."
+}
+elseif ($AlsAufgabe) {
+    # Geplante Aufgabe beim Anmelden - läuft im Nutzerkontext (voller PATH),
+    # überlebt Neustarts und braucht keine Adminrechte. Für diesen Rechner der
+    # empfohlene Weg.
+    Schritt "Als geplante Aufgabe (beim Anmelden)"
+    $aufgabe = "GitHubRunner-ebike"
+    $aktion  = New-ScheduledTaskAction -Execute "$Ordner\run.cmd"
+    $ausloeser = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $einst = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+    Register-ScheduledTask -TaskName $aufgabe -Action $aktion -Trigger $ausloeser `
+        -Settings $einst -Description "Startet den GitHub-Actions-Runner für ebike-deals" `
+        -Force | Out-Null
+    Start-ScheduledTask -TaskName $aufgabe
+    Write-Host "Aufgabe '$aufgabe' angelegt und gestartet." -ForegroundColor Green
+    Write-Host "Der Runner startet künftig automatisch bei Ihrer Anmeldung."
+    Write-Host "Entfernen:  Unregister-ScheduledTask -TaskName $aufgabe -Confirm:`$false"
+}
+else {
+    Schritt "Fertig - Runner läuft noch nicht"
+    Write-Host "Wählen Sie, wie der Runner dauerhaft laufen soll:"
+    Write-Host "  Empfohlen (kein Admin):  .\runner_einrichten.ps1 -AlsAufgabe"
+    Write-Host "  Als Dienst (Admin):      .\runner_einrichten.ps1 -AlsDienst"
+    Write-Host "  Nur zum Testen jetzt:    cd `"$Ordner`"; .\run.cmd"
 }
 
 # --- Repository umschalten -------------------------------------------------

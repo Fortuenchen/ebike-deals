@@ -915,10 +915,16 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
       }}
 
       if (ok && nurVorOrt.checked) ok = card.dataset.vorort === '1';
-      if (ok && radius !== null) {{
+      // Der Umkreis betrifft nur Raeder, die laut Shop vor Ort in einer Filiale
+      // stehen (vorort === '1'). Alles andere ist versandfaehig - auch ein
+      // blosser Firmensitz ohne Angabe zu diesem Rad (vorort === '0') - und
+      // kommt ohnehin nach Hause. Solche Angebote nach der Entfernung
+      // auszublenden waere falsch: die Lage zaehlt nur fuer ausschliesslich vor
+      // Ort verfuegbare Raeder.
+      if (ok && radius !== null && card.dataset.vorort === '1') {{
         var d = naechsteEntfernung(card);
-        // Ohne Standortangabe laesst sich die Entfernung nicht pruefen -
-        // solche Angebote gelten als unbekannt, nicht als zu weit weg.
+        // Ohne gesetzten Standort laesst sich die Entfernung nicht pruefen -
+        // dann gilt das Rad als unbekannt, nicht als zu weit weg.
         if (d === null) {{ missing = true; ok = !strict.checked; }}
         else ok = d <= radius;
       }}

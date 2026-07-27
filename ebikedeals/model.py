@@ -49,6 +49,11 @@ class Offer:
     branches: list[str] = field(default_factory=list)
     note: str = ""
 
+    #: "ebike" oder "fahrrad". Aus der Kategorie-Herkunft (typreine Sale-Liste)
+    #: bzw. sonst inhaltlich (Motor/Akku/Stichwort) bestimmt. Leer, bis der
+    #: Runner klassifiziert - dann nie leer.
+    bike_type: str = ""
+
     # -- Datenblatt-Merkmale, aus Titel bzw. Produktseite gewonnen. Abdeckung
     #    teilweise: nur wo der Shop es ausweist (wie battery_wh).
     drivetrain: str = ""     # "Kettenschaltung" / "Nabenschaltung"

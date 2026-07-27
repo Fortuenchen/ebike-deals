@@ -59,7 +59,11 @@ def _extract_json_value(text: str, start: int) -> str | None:
 class BikeExchange(Adapter):
     key = "bikeexchange"
     name = "bikeexchange.de"
-    source_url = "https://www.bikeexchange.de/de-DE/bike/e-bike-sale?order=discount&dir=desc"
+    # Gemischter Bike-Sale (E-Bike UND Fahrrad), nach Rabatt sortiert. Der Typ
+    # wird inhaltlich bestimmt (keyFeatures liefern Motor/Akku) -> bike_type_hint
+    # leer, damit nicht pauschal "ebike" getaggt wird.
+    source_url = "https://www.bikeexchange.de/de-DE/bikes/bike-sale?order=discount&dir=desc"
+    bike_type_hint = ""
 
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
         seen: set[str] = set()

@@ -35,7 +35,7 @@ on:
       min_discount:
         description: "Mindestrabatt in Prozent"
         type: string
-        default: "50"
+        default: "30"
 
 # Zwei gleichzeitige Läufe würden sich beim Zurückschreiben der Historie
 # gegenseitig überschreiben.
@@ -56,15 +56,18 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      # GitHub erlaubt auf öffentlichen Repos ~20 gleichzeitige Jobs. 18 lässt
+      # Luft und staffelt die ~28 Shard-Jobs automatisch in Wellen, ohne ein
+      # Limit (GitHub oder Shop) zu reissen.
+      max-parallel: 18
       matrix:
         # EIN Job pro Shop: Der Job-Name IST der Shop-Key, sodass ein roter Job
         # im Actions-Verlauf sofort zeigt, welcher Shop klemmt. Jeder Shop hat
         # eine eigene WARP-IP, damit sich die Shopify-Shops nicht mehr
         # gegenseitig ins 429 treiben.
         include:
+          # Shops, die E-Bike UND Fahrrad in einem Job schaffen (moderates Volumen).
           - shop: fahrrad24
-          - shop: fahrradxxl
-          - shop: lagerverkauf
           - shop: bikemarket24
           - shop: radfieber
           - shop: bikeexchange
@@ -73,20 +76,45 @@ jobs:
           - shop: luckybike
             render: true
           - shop: jobradloop
-          - shop: boc24
           - shop: denfeld
           - shop: bikediscount
           - shop: bike24
           - shop: ebikeonly
-          - shop: fahrradde
           - shop: mhwbike
           - shop: radwelt
           - shop: nubuk
           - shop: ebikestock
             ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
-          # upway ist zu gross für eine IP (sale + tiefe "all"-Collection laufen
-          # ins 429), daher vier Seitenbereich-Jobs mit je eigener WARP-IP; der
-          # Merge legt sie wieder zu einem upway zusammen.
+          # Grosse Katalog-Shops: getrennter E-Bike- und Fahrrad-Shard mit je
+          # eigener WARP-IP. Sonst trägt eine IP die kumulierte Last beider Typen
+          # und die Shopify-Shops (fahrradde, boc24) laufen ins 429 (wie upway).
+          - name: fahrradde-ebike
+            shop: fahrradde
+            bike_type: ebike
+          - name: fahrradde-fahrrad
+            shop: fahrradde
+            bike_type: fahrrad
+          - name: fahrradxxl-ebike
+            shop: fahrradxxl
+            bike_type: ebike
+          - name: fahrradxxl-fahrrad
+            shop: fahrradxxl
+            bike_type: fahrrad
+          - name: lagerverkauf-ebike
+            shop: lagerverkauf
+            bike_type: ebike
+          - name: lagerverkauf-fahrrad
+            shop: lagerverkauf
+            bike_type: fahrrad
+          - name: boc24-ebike
+            shop: boc24
+            bike_type: ebike
+          - name: boc24-fahrrad
+            shop: boc24
+            bike_type: fahrrad
+          # upway ist E-Bike-only, aber zu gross für eine IP (sale + tiefe
+          # "all"-Collection laufen ins 429), daher vier Seitenbereich-Jobs mit
+          # je eigener WARP-IP; der Merge legt sie wieder zu einem upway zusammen.
           - name: upway-sale
             shop: upway
             collections: sale
@@ -163,10 +191,14 @@ jobs:
           if [ -n "${{ matrix.pages }}" ]; then
             PAGES="--pages ${{ matrix.pages }}"
           fi
+          TYPE=""
+          if [ -n "${{ matrix.bike_type }}" ]; then
+            TYPE="--bike-type ${{ matrix.bike_type }}"
+          fi
           python tools/scrape_shard.py ${{ matrix.shop }} \
             --out "shard-${{ matrix.name || matrix.shop }}.pkl" \
-            --min-discount "${{ inputs.min_discount || '50' }}" \
-            --max-pages 8 $RENDER $RATINGS $COLL $PAGES
+            --min-discount "${{ inputs.min_discount || '30' }}" \
+            --max-pages 8 $RENDER $RATINGS $COLL $PAGES $TYPE
 
       - name: Ergebnis ablegen
         # always(): auch ein rot gewordener Shop hat sein Pickle schon
@@ -236,7 +268,7 @@ jobs:
           python tools/merge_report.py shards/*.pkl \
             --out bericht.html --json deals.json \
             --history preise.db --ratings bewertungen.json \
-            --min-discount "${{ inputs.min_discount || '50' }}"
+            --min-discount "${{ inputs.min_discount || '30' }}"
 
       - name: Bericht bewerten
         id: bewerten

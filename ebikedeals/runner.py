@@ -15,7 +15,15 @@ from .model import Offer, ShopResult, detect_condition, parse_battery_wh
 from .net import Blocked, Disallowed, Fetcher
 from .render import Renderer
 from .robots import RobotsCache
-from .sizes import enrich, read_battery_wh, read_og_image, read_prices, read_specs, specs_from_text
+from .sizes import (
+    classify_bike_type,
+    enrich,
+    read_battery_wh,
+    read_og_image,
+    read_prices,
+    read_specs,
+    specs_from_text,
+)
 
 
 @dataclass
@@ -45,6 +53,10 @@ class RunConfig:
     only_collections: list[str] | None = None
     #: Nur dieser Seitenbereich (start, ende inklusive) je Collection, None = alle.
     page_window: tuple[int, int] | None = None
+    #: Nur dieser Radtyp ("ebike" | "fahrrad"), None = beide. Teilt einen grossen
+    #: Shop in einen E-Bike- und einen Fahrrad-Shard mit je eigener IP auf, damit
+    #: keine IP die volle Last trägt (analog zu page_window bei upway).
+    bike_type: str | None = None
 
 
 @dataclass
@@ -80,6 +92,7 @@ def run(config: RunConfig) -> RunReport:
     # ohne dass jede scrape()-Signatur sie durchreichen muss.
     fetcher.page_window = config.page_window
     fetcher.only_collections = config.only_collections
+    fetcher.only_bike_type = config.bike_type
     robots = RobotsCache(fetcher)
     if config.respect_robots:
         fetcher.robots = robots
@@ -245,6 +258,20 @@ def _scrape_shop(
                 offer.wheel_size = offer.wheel_size or _s["wheel_size"]
             _cross_check_price(offer, html)
             checked += 1
+
+    # Typ (E-Bike/Fahrrad) festlegen, nachdem Titel und - wo geholt - die
+    # Produktseite alle Motor-/Akku-Signale geliefert haben. Was der Adapter aus
+    # einer typreinen Kategorie bereits getaggt hat, bleibt stehen.
+    for offer in unique:
+        if not offer.bike_type:
+            offer.bike_type = classify_bike_type(
+                offer.title,
+                offer.url,
+                motor=offer.motor,
+                battery_wh=offer.battery_wh,
+                battery_min_wh=offer.battery_min_wh,
+                hint=adapter.bike_type_hint,
+            )
 
     unique.sort(key=lambda o: -(o.effective_discount_pct or 0))
     result.offers = unique

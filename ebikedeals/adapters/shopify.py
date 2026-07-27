@@ -13,7 +13,7 @@ from typing import Iterator
 
 from ..model import Offer, dedup_sizes, looks_like_size, parse_price
 from ..net import Fetcher
-from .base import Adapter
+from .base import Adapter, filter_typed
 
 # Option names Shopify merchants use for the frame size.
 _SIZE_OPTION = re.compile(r"gr(ö|oe|o)ss?e|size|rahmen|frame", re.I)
@@ -60,19 +60,33 @@ _NON_EBIKE_TYPE = re.compile(r"non-?electric|bio[\s-]?bike|muskelkraft", re.I)
 
 
 class ShopifyAdapter(Adapter):
-    collections: list[str] = []
+    collections: list[str] = []            # E-Bike-Collections (erben bike_type_hint)
+    collections_fahrrad: list[str] = []    # typrein Fahrrad
+    collections_mixed: list[str] = []      # gemischt -> inhaltlich klassifiziert
+    #: True: nicht-elektrische Produkte verwerfen (reine E-Bike-Shops wie upway,
+    #: deren breite "all"-Collection auch Bio-Bikes enthält).
+    ebike_only: bool = False
     page_size = 250
+
+    def typed_collections(self) -> list[tuple[str, str]]:
+        return (
+            [(h, self.bike_type_hint) for h in self.collections]
+            + [(h, "fahrrad") for h in self.collections_fahrrad]
+            + [(h, "") for h in self.collections_mixed]
+        )
 
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
         # Optionales Sharding-Fenster (siehe RunConfig): nur bestimmte Collections
         # und Seiten, damit ein grosser Shop (upway) auf mehrere Jobs mit je
         # eigener IP passt, ohne an der Seitenzahl ins 429 zu laufen.
         only = getattr(fetcher, "only_collections", None)
+        only_type = getattr(fetcher, "only_bike_type", None)
         p_start, p_end = getattr(fetcher, "page_window", None) or (1, None)
-        collections = [h for h in self.collections if not only or h in only]
+        typed = filter_typed(self.typed_collections(), only_type)
+        collections = [(h, t) for h, t in typed if not only or h in only]
 
         seen: set[int] = set()
-        for index, handle in enumerate(collections):
+        for index, (handle, btype) in enumerate(collections):
             last = self.pages_for(max_pages)
             if p_end is not None:
                 last = min(last, p_end)
@@ -100,6 +114,8 @@ class ShopifyAdapter(Adapter):
                     seen.add(p["id"])
                     offer = self._to_offer(p, handle)
                     if offer:
+                        if btype and not offer.bike_type:
+                            offer.bike_type = btype
                         yield offer
                 if len(products) < self.page_size:
                     break
@@ -110,7 +126,11 @@ class ShopifyAdapter(Adapter):
         if not variants:
             return None
         ptype = p.get("product_type") or ""
-        if ptype and (_NON_BIKE_TYPE.search(ptype) or _NON_EBIKE_TYPE.search(ptype)):
+        # Versicherungen/Zubehör immer raus. Nicht-elektrische Räder nur in reinen
+        # E-Bike-Shops verwerfen; sonst behalten und als Fahrrad klassifizieren.
+        if ptype and _NON_BIKE_TYPE.search(ptype):
+            return None
+        if ptype and self.ebike_only and _NON_EBIKE_TYPE.search(ptype):
             return None
 
         # Which option position holds the size?
@@ -207,6 +227,11 @@ class BikeMarket24(ShopifyAdapter):
     # because merchants do not always tag every reduced bike.
     source_url = "https://bikemarket24.de/collections/angebote-e-bike"
     collections = ["angebote-e-bike", "e-bike"]
+    # Reduzierte Nicht-E-Bikes stehen in eigenen "bike-deals"-Sammlungen je Gattung.
+    collections_fahrrad = [
+        "bike-deals-cube-fahrrader", "bike-deals-mountainbikes", "bike-deals-rennrader",
+        "bike-deals-trekkingbikes", "bike-deals-city-urban", "bike-deals-kinderrader",
+    ]
 
 
 class Boc24(ShopifyAdapter):
@@ -216,6 +241,7 @@ class Boc24(ShopifyAdapter):
     # The brief gave the shop homepage; these are its e-bike collections.
     source_url = "https://boc24.de/collections/e-bikes-reduziert"
     collections = ["e-bikes-reduziert", "e-bikes"]
+    collections_fahrrad = ["fahrrad-reduziert"]  # "Reduzierte Fahrräder"
 
 
 class EBikeOnly(ShopifyAdapter):
@@ -226,6 +252,7 @@ class EBikeOnly(ShopifyAdapter):
     # The sale collection holds 256 of 1308 e-bikes and misses 7 offers above
     # 50 % - a curated pick, not every reduced bike.
     collections = ["e-bike-sale", "all-e-bikes"]
+    ebike_only = True  # der Name ist Programm - keine Bio-Bikes
 
 
 class FahrradDe(ShopifyAdapter):
@@ -233,7 +260,11 @@ class FahrradDe(ShopifyAdapter):
     name = "fahrrad.de"
     base = "https://www.fahrrad.de"
     source_url = "https://www.fahrrad.de/collections/e-bike-sale"
-    collections = ["e-bike-sale"]
+    # e-bike-sale ist nur eine kuratierte Auswahl (159 Räder). Die tiefsten
+    # Rabatte liegen getrennt in der B-Ware-Sammlung, dazu Sommer-Sale und
+    # Aktionsprodukte - erst zusammen erreichen wir die reduzierten E-Bikes.
+    collections = ["e-bike-sale", "e-bike-sale-1", "e-bikes-aktionsprodukte", "e-bikes-b-ware"]
+    collections_fahrrad = ["fahrrader-sale", "fahrrader-aktionsprodukte", "fahrraeder-b-ware"]
 
 
 class Upway(ShopifyAdapter):
@@ -255,6 +286,7 @@ class Upway(ShopifyAdapter):
     # adds another 38 buyable ones.
     source_url = "https://upway.de/collections/sale"
     collections = ["sale", "all"]
+    ebike_only = True  # refurbished E-Bikes; "all" enthält auch Bio-Bikes/Zubehör
     default_condition = "refurbished"
     #: "all" runs to ~3500 products at 250 per page
     page_budget = 16

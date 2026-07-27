@@ -248,6 +248,7 @@ def _offer_card(o: Offer, ratings=None, partner: Partnerlinks | None = None) -> 
              data-motor="{_esc(o.motor)}" data-drive="{_esc(o.drivetrain)}"
              data-brake="{_esc(o.brakes)}" data-wheel="{_esc(o.wheel_size)}"
              data-newweek="{'1' if neu else '0'}"
+             data-type="{o.bike_type or 'ebike'}"
              data-search="{_esc(haystack)}">
       <div class="thumb">{img}<span class="badge">−{d:.0f}&nbsp;%</span>{cond}{'<span class="badge badge--new">Neu</span>' if neu else ''}</div>
       <div class="body">
@@ -492,6 +493,12 @@ def _render_html(report: RunReport) -> str:
     monday = _monday_iso()
     n_newweek = sum(1 for o in offers if o.first_seen and o.first_seen >= monday)
 
+    # Radtyp-Umschalter E-Bike/Fahrrad. Leerer bike_type zählt als E-Bike
+    # (Bestand vor der Klassifikation), damit Alle = E-Bike + Fahrrad aufgeht.
+    n_ebike = sum(1 for o in offers if (o.bike_type or "ebike") == "ebike")
+    n_fahrrad = sum(1 for o in offers if o.bike_type == "fahrrad")
+    n_all = len(offers)
+
     def _spec_select(getter, sid, label):
         items = Counter(v for o in offers if (v := getter(o)))
         if not items:
@@ -583,6 +590,13 @@ a {{ color:inherit; }}
 .toggle {{ display:flex; align-items:center; gap:7px; font-size:.88rem; cursor:pointer;
   white-space:nowrap; }}
 .toggle input {{ width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }}
+.segmented {{ display:inline-flex; background:var(--chip); border:1px solid var(--line);
+  border-radius:999px; padding:3px; gap:2px; }}
+.segmented .seg {{ border:0; background:transparent; color:var(--muted); cursor:pointer;
+  font-family:inherit; font-size:.9rem; font-weight:600; padding:7px 16px; border-radius:999px;
+  white-space:nowrap; transition:background .12s, color .12s; }}
+.segmented .seg:hover {{ color:var(--fg); }}
+.segmented .seg.active {{ background:var(--accent); color:#fff; }}
 .filters {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }}
 .chip {{ background:var(--chip); border:1px solid var(--line); color:var(--muted);
   border-radius:999px; padding:6px 13px; font-size:.85rem; cursor:pointer;
@@ -741,6 +755,14 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   </details>
 
   <div class="controls">
+    <div class="segmented" id="typeSwitch" role="group" aria-label="Radtyp">
+      <button type="button" class="seg active" data-type="alle" aria-pressed="true">Alle ({n_all})</button>
+      <button type="button" class="seg" data-type="ebike" aria-pressed="false">E-Bike ({n_ebike})</button>
+      <button type="button" class="seg" data-type="fahrrad" aria-pressed="false">Fahrrad ({n_fahrrad})</button>
+    </div>
+  </div>
+
+  <div class="controls">
     <input type="search" id="q" placeholder="Suchen: Marke, Modell, Motor, Größe …"
            autocomplete="off" spellcheck="false">
     <label class="sel">Sortierung
@@ -870,6 +892,9 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
   var estimate = document.getElementById('estimate');
   var onlyNew = document.getElementById('onlyNew');
   var newWeek = document.getElementById('newWeek');
+  var typeSwitch = document.getElementById('typeSwitch');
+  var typeSegs = typeSwitch ? Array.prototype.slice.call(typeSwitch.querySelectorAll('.seg')) : [];
+  var bikeType = 'alle';
   var fMotor = document.getElementById('fMotor');
   var fDrive = document.getElementById('fDrive');
   var fBrake = document.getElementById('fBrake');
@@ -912,6 +937,7 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     if (radiusSel.value) p.set('km', radiusSel.value);
     if (nurVorOrt.checked) p.set('vorort', '1');
     if (onlyNew.checked) p.set('new', '1');
+    if (bikeType !== 'alle') p.set('typ', bikeType);
     var offShops = shopChips.filter(function (c) {{ return !c.classList.contains('active'); }});
     if (offShops.length) {{
       p.set('shops', shopChips.filter(function (c) {{ return c.classList.contains('active'); }})
@@ -952,6 +978,12 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     nurVorOrt.checked = p.get('vorort') === '1';
     setzeStandort(ortSel.value);
     onlyNew.checked = p.get('new') === '1';
+    bikeType = p.get('typ') || 'alle';
+    typeSegs.forEach(function (s) {{
+      var on = s.dataset.type === bikeType;
+      s.classList.toggle('active', on);
+      s.setAttribute('aria-pressed', on);
+    }});
     setChips(shopChips, 'shop', p.has('shops') ? p.get('shops').split(',') : null);
     setChips(sizeChips, 'size', p.has('sizes') ? p.get('sizes').split(',') : []);
   }}
@@ -1011,6 +1043,7 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
       var ok = shops ? !!shops[card.dataset.shop] : false;
       if (ok && onlyNew.checked) ok = card.dataset.condition === 'new';
       if (ok && newWeek && newWeek.checked) ok = card.dataset.newweek === '1';
+      if (ok && bikeType !== 'alle') ok = (card.dataset.type || 'ebike') === bikeType;
       if (ok && fMotor && fMotor.value) ok = card.dataset.motor === fMotor.value;
       if (ok && fDrive && fDrive.value) ok = card.dataset.drive === fDrive.value;
       if (ok && fBrake && fBrake.value) ok = card.dataset.brake === fBrake.value;
@@ -1193,6 +1226,17 @@ footer {{ margin-top:36px; color:var(--muted); font-size:.82rem; }}
     }});
   }});
 
+  typeSegs.forEach(function (seg) {{
+    seg.addEventListener('click', function () {{
+      bikeType = seg.dataset.type;
+      typeSegs.forEach(function (s) {{
+        var on = s === seg;
+        s.classList.toggle('active', on);
+        s.setAttribute('aria-pressed', on);
+      }});
+      apply();
+    }});
+  }});
   [sort, onlyNew, strict, estimate, radiusSel, nurVorOrt, newWeek, fMotor, fDrive, fBrake, fWheel].filter(Boolean).forEach(function (el) {{
     el.addEventListener('change', apply);
   }});

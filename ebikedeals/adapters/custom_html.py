@@ -31,7 +31,20 @@ class FahrradXXL(Adapter):
     # hits of the full catalogue - but it is not a superset: a handful of
     # reduced bikes appear only in the general category, so both are scanned.
     source_url = "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/e-bike-pedelec/"
-    extra_urls = ["https://www.fahrrad-xxl.de/fahrraeder/e-bike/"]
+    extra_urls = [
+        "https://www.fahrrad-xxl.de/fahrraeder/e-bike/",
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/e-mtb/",
+    ]
+    # Reduzierte Nicht-E-Bikes: die Sale-Kategorie ist nach Gattung geteilt.
+    fahrrad_urls = [
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/mountainbikes/",
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/trekkingraeder/",
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/rennraeder/",
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/gravel-bikes/",
+        "https://www.fahrrad-xxl.de/angebote/angebote-fahrraeder/kinderfahrraeder/",
+    ]
+    # B-Ware-Sale (E-Bike + Fahrrad gemischt) - oft die tiefsten Rabatte.
+    mixed_urls = ["https://www.fahrrad-xxl.de/angebote/b-ware-sale/"]
 
     @staticmethod
     def page_url(base: str, page: int) -> str:
@@ -117,6 +130,7 @@ class Radfieber(Adapter):
     key = "radfieber"
     name = "radfieber.de"
     source_url = "https://www.radfieber.de/ebikes/sale/"
+    fahrrad_urls = ["https://www.radfieber.de/fahrraeder/sale/"]
 
     @staticmethod
     def page_url(base: str, page: int) -> str:
@@ -213,8 +227,10 @@ class Rad1(Adapter):
     name = "rad1.de"
     source_url = "https://www.rad1.de/e-bikes/"
     # rad1 has no e-bike-only sale category; /sale/ mixes bikes with helmets
-    # and road bikes, so non-e-bikes are filtered out below.
+    # and road bikes, so non-e-bikes are filtered out below. Reguläre Räder
+    # kommen sauber aus der eigenen Fahrrad-Kategorie (bike-only, kein Zubehör).
     extra_urls = ["https://www.rad1.de/sale/"]
+    fahrrad_urls = ["https://www.rad1.de/fahrraeder/"]
 
     _EBIKE = re.compile(r"e-?bike|pedelec|e-mtb|e-trekking|e-city", re.I)
 
@@ -281,6 +297,13 @@ class NubukBikes(Adapter):
     key = "nubuk"
     name = "nubuk-bikes.de"
     source_url = "https://www.nubuk-bikes.de/sale/e-bike-sale"
+    # MTB-/Gravel-Sale sind gemischt (E-MTB + reguläre Räder). E-MTBs stehen
+    # schon im e-bike-sale (zuerst gescrapt, dort als ebike getaggt) und werden
+    # hier via Dedup übersprungen; neu sind nur die regulären Räder -> Fahrrad.
+    mixed_urls = [
+        "https://www.nubuk-bikes.de/sale/mountainbike-sale",
+        "https://www.nubuk-bikes.de/sale/gravel-sale",
+    ]
 
     @staticmethod
     def page_url(base: str, page: int) -> str:

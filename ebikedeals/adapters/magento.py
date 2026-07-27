@@ -148,6 +148,8 @@ class Fahrrad24(MagentoAdapter):
     # reduced: 89 products against 474 in the full category, and 31 offers
     # above 50 % exist only outside it - including a 64 % Corwen F750 MTB.
     extra_urls = ["https://www.fahrrad24.de/e-bikes.html"]
+    # Volle Fahrrad-Kategorie; unser eigener Rabattfilter zieht die Reduzierten.
+    fahrrad_urls = ["https://www.fahrrad24.de/fahrraeder.html"]
     #: the full category runs to ~475 products at 37 per page
     page_budget = 15
 
@@ -155,4 +157,7 @@ class Fahrrad24(MagentoAdapter):
 class Fahrradlagerverkauf(MagentoAdapter):
     key = "lagerverkauf"
     name = "fahrradlagerverkauf.com"
+    # Der ganze Shop ist ein Lagerverkauf (Abverkaufspreise), daher die vollen
+    # Kategorien; unser Rabattfilter trennt die wirklich Reduzierten heraus.
     source_url = "https://www.fahrradlagerverkauf.com/e-bikes"
+    fahrrad_urls = ["https://www.fahrradlagerverkauf.com/fahrraeder"]

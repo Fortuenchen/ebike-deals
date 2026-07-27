@@ -120,12 +120,14 @@ class BikeAngebot(Shopware6Adapter):
     # The shop's own e-bike sale listing rather than the full e-bike category.
     source_url = "https://bike-angebot.de/hot-deals/e-bikes-im-sale"
     extra_urls = ["https://bike-angebot.de/e-bikes-pedelecs"]
+    fahrrad_urls = ["https://bike-angebot.de/hot-deals/fahrraeder-im-sale"]
 
 
 class Denfeld(Shopware6Adapter):
     key = "denfeld"
     name = "denfeld.de"
     source_url = "https://www.denfeld.de/e-bikes/aktuelle-angebote/"
+    fahrrad_urls = ["https://www.denfeld.de/fahrraeder/aktuelle-angebote/"]
 
 
 class MhwBike(Shopware6Adapter):
@@ -134,12 +136,17 @@ class MhwBike(Shopware6Adapter):
     source_url = "https://mhw-bike.de/sale/e-bikes/"
     # "2. Wahl" are B-stock bikes - typically the deepest discounts on the site.
     extra_urls = ["https://mhw-bike.de/sale/2.-wahl/e-bikes/"]
+    fahrrad_urls = [
+        "https://mhw-bike.de/sale/fahrraeder/",
+        "https://mhw-bike.de/sale/2.-wahl/fahrraeder/",  # B-Ware, oft die tiefsten Rabatte
+    ]
 
 
 class RadweltShop(Shopware6Adapter):
     key = "radwelt"
     name = "radwelt-shop.de"
     source_url = "https://www.radwelt-shop.de/sale/e-bike-sale/"
+    fahrrad_urls = ["https://www.radwelt-shop.de/sale/fahrrad-sale/"]
 
 
 class BikeDiscount(Shopware6Adapter):
@@ -151,3 +158,4 @@ class BikeDiscount(Shopware6Adapter):
     # path is explicitly allowed and lists the same products, so we use that
     # and accept that only the first page is reachable.
     source_url = "https://www.bike-discount.de/de/e-bike-kaufen"
+    fahrrad_urls = ["https://www.bike-discount.de/de/fahrrad-kaufen"]

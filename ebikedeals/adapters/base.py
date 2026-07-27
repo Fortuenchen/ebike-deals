@@ -31,6 +31,12 @@ class Adapter:
     #: category here - pre-filtered listings mean far fewer requests and far
     #: less noise than paging through a full catalogue.
     extra_urls: list[str] = []
+    #: Fahrrad-Sale-Listen (typrein). Angebote von hier werden direkt als
+    #: "fahrrad" getaggt, unabhängig vom Titel.
+    fahrrad_urls: list[str] = []
+    #: Gemischte Listen (E-Bike UND Fahrrad, z. B. eine gemeinsame /sale/-Seite).
+    #: Angebote bleiben ungetaggt und werden inhaltlich klassifiziert.
+    mixed_urls: list[str] = []
     #: Per-shop page budget for shops that have no sale filter and therefore
     #: need deeper paging. None = use the run-wide default.
     page_budget: int | None = None
@@ -38,6 +44,11 @@ class Adapter:
     #: refurbished bikes without saying so per product - without this the
     #: report would present them as new stock.
     default_condition: str = ""
+    #: Standard-Radtyp, wenn die Kategorie nichts anderes sagt. Alle bisherigen
+    #: Shops sind reine E-Bike-Shops, daher "ebike". Ein gemischter Shop setzt ""
+    #: (dann inhaltlich per classify_bike_type klassifiziert); typreine Fahrrad-
+    #: Kategorien taggen ihre Angebote direkt (siehe fahrrad_urls).
+    bike_type_hint: str = "ebike"
     #: set when the shop cannot be scraped over plain HTTP
     skipped_reason: str = ""
     #: True when the listing only exists after JavaScript has run, so the shop
@@ -46,6 +57,21 @@ class Adapter:
 
     def listing_urls(self) -> list[str]:
         return [self.source_url, *self.extra_urls]
+
+    def typed_urls(self) -> list[tuple[str, str]]:
+        """(URL, Radtyp)-Paare für den Scrape.
+
+        Die Standardlisten (source_url + extra_urls) erben bike_type_hint (für
+        alle bisherigen Shops "ebike"); fahrrad_urls sind typrein Fahrrad;
+        mixed_urls bleiben offen ("") und werden je Angebot inhaltlich
+        klassifiziert. So steht der Typ verlässlich an der Kategorie-Herkunft,
+        nicht am Textabgleich.
+        """
+        return (
+            [(u, self.bike_type_hint) for u in self.listing_urls()]
+            + [(u, "fahrrad") for u in self.fahrrad_urls]
+            + [(u, "") for u in self.mixed_urls]
+        )
 
     def pages_for(self, max_pages: int) -> int:
         return max(max_pages, self.page_budget or 0)
@@ -103,19 +129,37 @@ def nearest_product_link(node: Node, max_up: int = 8) -> tuple[str, str]:
     return fallback
 
 
-def fetch_page(fetcher: Fetcher, url: str, page: int) -> str | None:
+def fetch_page(fetcher: Fetcher, url: str, page: int, fatal: bool = True) -> str | None:
     """Fetch one listing page.
 
     A failure on page 1 means the adapter is broken or the shop blocked us -
     that must surface in the report, so it propagates. A failure on a later
     page just means we ran past the end of the listing.
+
+    fatal=False marks a supplementary listing (a fahrrad_urls/mixed_urls entry):
+    if such a category is missing (404) or blocked, only that list is skipped -
+    it must not turn the whole shop red, since the primary listing is fine.
     """
     try:
         return fetcher.get(url)
     except Exception:
-        if page == 1:
+        if page == 1 and fatal:
             raise
         return None
+
+
+def filter_typed(typed: list[tuple[str, str]], only: str | None) -> list[tuple[str, str]]:
+    """Typisierte Listen auf einen Radtyp-Shard einschränken.
+
+    "fahrrad": nur Fahrrad-Listen. "ebike": E-Bike- UND gemischte Listen - die
+    gemischten liefern beide Typen und gehören in genau einen Shard, sonst würden
+    sie doppelt gescrapt. None: alles (kein Split).
+    """
+    if not only:
+        return typed
+    if only == "fahrrad":
+        return [(u, t) for u, t in typed if t == "fahrrad"]
+    return [(u, t) for u, t in typed if t != "fahrrad"]
 
 
 def paged_listing(adapter, fetcher, max_pages, page_url, extract):
@@ -128,9 +172,15 @@ def paged_listing(adapter, fetcher, max_pages, page_url, extract):
     its main category overlap by design.
     """
     seen: set[str] = set()
-    for base in adapter.listing_urls():
+    typed = filter_typed(adapter.typed_urls(), getattr(fetcher, "only_bike_type", None))
+    for i, (base, btype) in enumerate(typed):
         for page in range(1, adapter.pages_for(max_pages) + 1):
-            html = fetch_page(fetcher, page_url(base, page), page)
+            # Nur die primäre (erste, nicht-Fahrrad) Liste ist geschäftskritisch;
+            # Fahrrad- und Zusatzlisten dürfen fehlen, ohne den Shop rot zu färben.
+            html = fetch_page(
+                fetcher, page_url(base, page), page,
+                fatal=(i == 0 and btype != "fahrrad"),
+            )
             if html is None:
                 break
             offers = [o for o in extract(html, base) if o]
@@ -141,6 +191,10 @@ def paged_listing(adapter, fetcher, max_pages, page_url, extract):
                 if offer.url in seen:
                     continue
                 seen.add(offer.url)
+                # Typ aus der Kategorie-Herkunft festhalten (verlässlicher als
+                # der Titel); "" lässt der Runner inhaltlich klassifizieren.
+                if btype and not offer.bike_type:
+                    offer.bike_type = btype
                 new += 1
                 yield offer
             # A page whose entries we have all seen means we looped back to

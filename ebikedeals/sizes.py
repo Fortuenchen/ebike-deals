@@ -289,6 +289,12 @@ _DERAIL = re.compile(
     r"Altus|Tourney|Cues|GRX|Microshift|Sensah|Advent|SRAM\s*(?:GX|NX|SX|X0|X1))\b", re.I)
 _WHEEL = re.compile(r"\b(20|24|26|27[.,]5|28|29)\s*(?:zoll|inch|[\"″'])", re.I)
 
+# Stichwörter, die ein E-Bike ausweisen (Titel/URL/Kategorie-Slug). EINE zentrale
+# Definition, die woocommerce und Rad1 wiederverwenden, statt je eigener Kopie.
+EBIKE_KEYWORDS = re.compile(
+    r"e-?bike|pedelec|s-pedelec|e-?mtb|e-?trekking|e-?city|e-?lasten|"
+    r"e-?falt|e-?road|e-?gravel|elektro", re.I)
+
 
 def _motor_of(text: str) -> str:
     if _MOTOR_SHIMANO.search(text):
@@ -326,6 +332,31 @@ def specs_from_text(text: str) -> dict:
         "wheel_size": _wheel_of(text),
         "drivetrain": _drivetrain_of(text),
     }
+
+
+def classify_bike_type(
+    title: str,
+    url: str,
+    *,
+    motor: str = "",
+    battery_wh: int | None = None,
+    battery_min_wh: int | None = None,
+    hint: str = "",
+) -> str:
+    """"ebike" oder "fahrrad".
+
+    Die Kategorie-Herkunft (hint) gewinnt, wenn gesetzt: eine typreine E-Bike-
+    bzw. Fahrrad-Sale-Kategorie ist verlässlicher als jeder Textabgleich. Sonst
+    inhaltlich - Motor oder Akku beweisen ein E-Bike; danach ein Stichwort in
+    Titel/URL; sonst Fahrrad. Nie leer.
+    """
+    if hint in ("ebike", "fahrrad"):
+        return hint
+    if motor or battery_wh or battery_min_wh:
+        return "ebike"
+    if EBIKE_KEYWORDS.search(f"{title} {url}"):
+        return "ebike"
+    return "fahrrad"
 
 
 def _spec_pairs(doc) -> list[tuple[str, str]]:

@@ -303,7 +303,15 @@ jobs:
   # --- 3) Als Webseite veröffentlichen ------------------------------------
   veroeffentlichen:
     needs: zusammenfuehren
-    if: vars.PUBLISH_PAGES == 'true' && needs.zusammenfuehren.outputs.bericht_bereit == 'true'
+    # Explizit statt implizitem success(): Weil der Merge-Job !cancelled() nutzt,
+    # greift die automatische success()-Sperre hier nicht zuverlässig - der
+    # Publish wurde sonst übersprungen, obwohl bericht_bereit=true war. Deshalb
+    # das Merge-Ergebnis ausdrücklich prüfen.
+    if: >-
+      ${{ !cancelled()
+          && needs.zusammenfuehren.result == 'success'
+          && vars.PUBLISH_PAGES == 'true'
+          && needs.zusammenfuehren.outputs.bericht_bereit == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write

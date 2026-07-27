@@ -103,6 +103,10 @@ class FahrradXXL(Adapter):
                 ids = json.loads(avail.get("data-availableonbranch") or "[]")
             except (ValueError, TypeError):
                 ids = []
+            # data-availableonbranch kann "null" sein → json.loads liefert None;
+            # nur echte Listen sind iterierbar.
+            if not isinstance(ids, list):
+                ids = []
             branches = [str(i) for i in dict.fromkeys(ids) if i]
 
         return Offer(

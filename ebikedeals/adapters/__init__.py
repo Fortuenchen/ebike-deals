@@ -7,6 +7,7 @@ from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
 from .js_apps import BikeExchange, JobradLoop
 from .luckybike import LuckyBike
 from .magento import Fahrrad24, Fahrradlagerverkauf
+from .rosebikes import RoseBikes
 from .shopify import BikeMarket24, Boc24, EBikeOnly, FahrradDe, Upway
 from .shopware6 import BikeAngebot, BikeDiscount, Denfeld, MhwBike, RadweltShop
 from .woocommerce import EbikeStock
@@ -56,6 +57,7 @@ ADAPTERS: list[type[Adapter]] = [
     NubukBikes,
     Upway,
     EbikeStock,
+    RoseBikes,
 ]
 
 BY_KEY = {a.key: a for a in ADAPTERS}

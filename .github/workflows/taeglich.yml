@@ -83,6 +83,7 @@ jobs:
           - shop: mhwbike
           - shop: radwelt
           - shop: nubuk
+          - shop: rose             # rosebikes.de - Sale mischt E-Bike + Fahrrad
           - shop: ebikestock
             ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
           # Grosse Katalog-Shops: getrennter E-Bike- und Fahrrad-Shard mit je

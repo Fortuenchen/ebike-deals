@@ -278,9 +278,12 @@ def read_og_image(html: str) -> str:
 # Datenblatt-Merkmale: Schaltungstyp, Motor, Bremsen, Radgröße
 # ---------------------------------------------------------------------------
 # Motor-eigene Marken (eindeutig ein Antrieb, kein Schaltungshersteller).
+# Continental bewusst NICHT: die Marke steht auf regulären Rädern für die Reifen
+# (das E-Bike-Antriebssystem ist eingestellt) und markierte sonst jedes Rennrad
+# mit Conti-Reifen fälschlich als E-Bike.
 _MOTOR_BRANDS = re.compile(
     r"\b(Bosch|Yamaha|Brose|Bafang|Fazua|Panasonic|Mahle|TQ|Pinion|Neodrives|"
-    r"Ananda|Impulse|Continental|Specialized)\b", re.I)
+    r"Ananda|Impulse|Specialized)\b", re.I)
 # Shimano baut Motor UND Schaltung - als Motor nur mit STEPS/EP-Kennung zählen.
 _MOTOR_SHIMANO = re.compile(r"Shimano\s*(?:STEPS|EP\s?\d|E\d{3,4}|DU[- ])", re.I)
 _HUB = re.compile(r"\b(Nabenschaltung|Nexus|Inter[- ]?\d|Enviolo|NuVinci|Rohloff|Alfine)\b", re.I)
@@ -291,9 +294,11 @@ _WHEEL = re.compile(r"\b(20|24|26|27[.,]5|28|29)\s*(?:zoll|inch|[\"″'])", re.I
 
 # Stichwörter, die ein E-Bike ausweisen (Titel/URL/Kategorie-Slug). EINE zentrale
 # Definition, die woocommerce und Rad1 wiederverwenden, statt je eigener Kopie.
+# Führendes \b ist wichtig: sonst matcht "ebike" mitten in einer Domain wie
+# rosebikes.de ("ros-e-bike-s") und würde dort jedes reguläre Rad als E-Bike zählen.
 EBIKE_KEYWORDS = re.compile(
-    r"e-?bike|pedelec|s-pedelec|e-?mtb|e-?trekking|e-?city|e-?lasten|"
-    r"e-?falt|e-?road|e-?gravel|elektro", re.I)
+    r"\b(?:e-?bike|pedelec|s-pedelec|e-?mtb|e-?trekking|e-?city|e-?lasten|"
+    r"e-?falt|e-?road|e-?gravel|elektro)", re.I)
 
 
 def _motor_of(text: str) -> str:

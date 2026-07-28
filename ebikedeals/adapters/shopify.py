@@ -290,3 +290,22 @@ class Upway(ShopifyAdapter):
     default_condition = "refurbished"
     #: "all" runs to ~3500 products at 250 per page
     page_budget = 16
+
+
+class Bikester(ShopifyAdapter):
+    """bikester.de - gehört zur selben Gruppe wie fahrrad.de (Fahrrad.de
+    Bikester GmbH), daher als Shopify aufgebaut. Von hier aus nicht erreichbar
+    (Timeout), deshalb bewusst minimal: nur die bestätigte "sale"-Collection,
+    die E-Bike UND Fahrrad mischt -> inhaltlich klassifiziert. Sobald ein
+    Pipeline-Lauf die echten Collections zeigt, lassen sich e-bike-sale/
+    fahrrad-sale/B-Ware wie bei fahrrad.de ergänzen.
+    """
+
+    key = "bikester"
+    name = "bikester.de"
+    base = "https://www.bikester.de"
+    source_url = "https://www.bikester.de/collections/sale"
+    collections: list[str] = []
+    collections_mixed = ["sale"]
+    #: "all" runs to ~3500 products at 250 per page
+    page_budget = 16

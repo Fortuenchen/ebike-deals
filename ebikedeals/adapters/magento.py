@@ -154,6 +154,19 @@ class Fahrrad24(MagentoAdapter):
     page_budget = 15
 
 
+class DasRadhaus(MagentoAdapter):
+    key = "dasradhaus"
+    name = "das-radhaus.de"
+    # Magento-Shop. Die E-Bike-Sale-Kategorie stand zeitweise leer, daher die
+    # volle E-Bike-Kategorie als Einstieg; unser Rabattfilter zieht die
+    # Reduzierten. Fahrräder aus der Fahrrad-Kategorie + der Angebote-Sektion.
+    source_url = "https://www.das-radhaus.de/ebikes"
+    fahrrad_urls = [
+        "https://www.das-radhaus.de/fahrraeder",
+        "https://www.das-radhaus.de/angebote/fahrrader",
+    ]
+
+
 class Fahrradlagerverkauf(MagentoAdapter):
     key = "lagerverkauf"
     name = "fahrradlagerverkauf.com"

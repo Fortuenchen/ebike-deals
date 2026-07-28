@@ -303,6 +303,14 @@ class Bikester(ShopifyAdapter):
 
     key = "bikester"
     name = "bikester.de"
+    # Weder lokal noch über die Pipeline-IP (WARP) erreichbar - Verbindungs-
+    # Timeout (curl 28), vermutlich Geo-/Egress-Sperre. Bis ein erreichbarer
+    # Zugang/Feed vorliegt übersprungen; Collections bleiben für später stehen.
+    skipped_reason = (
+        "bikester.de ist über die Pipeline-IP (WARP) nicht erreichbar "
+        "(Verbindungs-Timeout, vermutlich Geo-/Egress-Sperre) - übersprungen. "
+        "Bitte manuell prüfen."
+    )
     base = "https://www.bikester.de"
     source_url = "https://www.bikester.de/collections/sale"
     collections: list[str] = []

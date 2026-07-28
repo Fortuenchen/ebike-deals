@@ -157,9 +157,15 @@ class Fahrrad24(MagentoAdapter):
 class DasRadhaus(MagentoAdapter):
     key = "dasradhaus"
     name = "das-radhaus.de"
-    # Magento-Shop. Die E-Bike-Sale-Kategorie stand zeitweise leer, daher die
-    # volle E-Bike-Kategorie als Einstieg; unser Rabattfilter zieht die
-    # Reduzierten. Fahrräder aus der Fahrrad-Kategorie + der Angebote-Sektion.
+    # Magento-Shop, aber die Pipeline-IP (Cloudflare WARP + curl_cffi) bekommt
+    # HTTP 403 (Bot-Schutz) - nur ein anderer Egress (Feed/residential Proxy)
+    # käme durch. Bis dahin übersprungen (die URLs bleiben stehen, damit ein
+    # Reaktivieren nur das Entfernen dieser Zeilen kostet).
+    skipped_reason = (
+        "das-radhaus.de antwortet über die Pipeline-IP (WARP+curl_cffi) mit HTTP "
+        "403 (Bot-Schutz). Ohne anderen Egress/Feed kein Zugang - übersprungen. "
+        "Bitte manuell prüfen."
+    )
     source_url = "https://www.das-radhaus.de/ebikes"
     fahrrad_urls = [
         "https://www.das-radhaus.de/fahrraeder",

@@ -143,19 +143,6 @@ def _availability_by_url(html: str) -> dict[str, bool]:
 class Fahrrad24(MagentoAdapter):
     key = "fahrrad24"
     name = "fahrrad24.de"
-    # Stand 2026-07: fahrrad24 weist weder auf den Listen noch auf den
-    # Produktseiten einen UVP/Streichpreis aus - die Preisboxen tragen nur
-    # data-price-type="finalPrice", kein oldPrice, und die JSON-LD-Angebote
-    # nennen keinen highPrice. Ohne Referenzpreis lässt sich ein Rabatt weder
-    # berechnen noch belegen, jedes Angebot fiele ohnehin durch den Filter. Statt
-    # stumm 0 Treffer zu liefern (sieht aus wie ein kaputter Scraper), wird der
-    # Shop transparent übersprungen. Zeigt fahrrad24 Reduzierungen wieder
-    # maschinenlesbar (oldPrice/UVP), genügt es, diese Zeile zu entfernen.
-    skipped_reason = (
-        "fahrrad24 nennt auf Listen und Produktseiten keinen UVP/Streichpreis "
-        "mehr (nur Endpreis) - ein Rabatt ist damit nicht belegbar. Bis der Shop "
-        "Reduzierungen wieder ausweist, übersprungen. Bitte manuell prüfen."
-    )
     source_url = "https://www.fahrrad24.de/e-bikes/super-e-bike-sale.html"
     # "Super E-Bike Sale" is a curated selection, not the list of everything
     # reduced: 89 products against 474 in the full category, and 31 offers

@@ -8,8 +8,10 @@ Ergebnissen aller Shards statt auf einem einzelnen Lauf.
 from __future__ import annotations
 
 import argparse
+import json
 import pickle
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,6 +25,50 @@ from ebikedeals.robots import RobotsCache  # noqa: E402
 from ebikedeals.runner import RunConfig, RunReport  # noqa: E402
 
 
+def _write_alarm_feed(report, path: Path, min_discount: float) -> None:
+    """Schlanker JSON-Feed als Datenquelle für das Preisalarm-Browser-Plugin.
+
+    Nur **Neuware** (kein refurbished/gebraucht/Testbike - ``condition`` leer) ab
+    ``min_discount`` %, wenige Felder, nach Rabatt sortiert. So kann das Plugin
+    oft und günstig pollen; die 66-%-Schwelle setzt es selbst (darum hier eine
+    tiefere Untergrenze). ``first_seen`` erlaubt dem Plugin, wirklich neue
+    Angebote zu erkennen, ``generated`` einen frischen Lauf.
+    """
+    items = []
+    for o in report.offers:
+        if o.condition:
+            continue  # nur Neuware
+        d = o.effective_discount_pct
+        if d is None or d < min_discount:
+            continue
+        items.append({
+            "url": o.url,
+            "title": o.title,
+            "shop": o.shop,
+            "brand": o.brand,
+            "price": o.price,
+            "list_price": o.list_price,
+            "discount": round(d, 1),
+            "bike_type": o.bike_type or "ebike",
+            "first_seen": o.first_seen,
+            "in_stock": o.in_stock,
+            "image": o.image,
+        })
+    items.sort(key=lambda x: -x["discount"])
+    payload = {
+        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "min_discount": min_discount,
+        "count": len(items),
+        "offers": items,
+    }
+    try:
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        print(f"Preisalarm-Feed: {len(items)} Neuware-Angebote ab {min_discount:.0f} % "
+              f"-> {path}", file=sys.stderr)
+    except Exception as e:
+        print(f"Preisalarm-Feed-Fehler: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("pickles", nargs="+", type=Path, help="Shard-Pickles")
@@ -32,6 +78,12 @@ def main() -> int:
     ap.add_argument("--ratings", type=Path, default=Path("bewertungen.json"))
     ap.add_argument("--min-discount", type=float, default=50.0)
     ap.add_argument("--max-pages", type=int, default=8)
+    ap.add_argument("--alarm", type=Path, default=Path("preisalarm.json"),
+                    help="schlanker Feed (nur Neuware ab --alarm-min-discount) "
+                         "als Datenquelle für das Preisalarm-Browser-Plugin")
+    ap.add_argument("--alarm-min-discount", type=float, default=60.0,
+                    help="Untergrenze des Alarm-Feeds; das Plugin filtert von "
+                         "hier aus feiner (Standard-Alarm 66 %)")
     a = ap.parse_args()
 
     # Shards einsammeln. Ein Shop kann aus MEHREREN Seitenbereich-Shards kommen
@@ -86,6 +138,7 @@ def main() -> int:
     report.results.sort(key=lambda r: (-len(r.offers), r.name))
     write_html(report, a.out)
     write_json(report, a.json)
+    _write_alarm_feed(report, a.alarm, a.alarm_min_discount)
 
     print(f"Zusammengefuehrt: {len(report.offers)} Angebote aus "
           f"{report.total_scanned} geprueft, {len(results)} Shops", file=sys.stderr)

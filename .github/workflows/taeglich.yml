@@ -334,6 +334,7 @@ jobs:
           path: |
             bericht.html
             deals.json
+            preisalarm.json
           retention-days: 30
           if-no-files-found: warn
 
@@ -371,6 +372,8 @@ jobs:
       - name: Als Startseite ablegen
         run: |
           cp site/bericht.html site/index.html
+          # deals.json (5+ MB) nicht veröffentlichen; preisalarm.json (~15 KB)
+          # dagegen schon - es ist die Datenquelle fürs Preisalarm-Browser-Plugin.
           rm -f site/deals.json
           touch site/.nojekyll
 

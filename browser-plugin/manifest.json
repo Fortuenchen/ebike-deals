@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "EbikeDeals Preisalarm",
+  "version": "1.0.0",
+  "description": "Meldet neue Neuware-Angebote über 66 % Rabatt aus dem EbikeDeals-Scanner als Desktop-Benachrichtigung.",
+  "permissions": ["alarms", "notifications", "storage"],
+  "host_permissions": ["https://fortuenchen.github.io/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "EbikeDeals Preisalarm"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "preisalarm@ebikedeals",
+      "strict_min_version": "121.0"
+    }
+  }
+}

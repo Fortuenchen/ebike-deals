@@ -1,20 +1,22 @@
 """shop.zweirad-stadler.de - Zweirad Stadler, OXID eShop.
 
-Outlet-Kacheln (``productBox``). Zwei Fallstricke:
+Einstieg über die **volle E-Bike-Kategorie als Artikelliste** (``cl=alist``,
+96 Artikel je Seite) statt des winzigen Outlets - das Outlet bestand fast nur
+aus Bekleidung/Zubehör/Sportnahrung (~2 Räder je Seite), die volle Kategorie
+enthält alle E-Bikes und unser Rabattfilter zieht die Reduzierten heraus.
 
-* Das Outlet mischt Räder mit Bekleidung, Zubehör und Sportnahrung. Nur die
-  eigentlichen Räder liegen unter ``/fahrrad-shop/`` - danach wird gefiltert.
-* Die Outlet-Kategorien sind nicht typrein: ``/e-bikes/outlet/`` enthält auch
-  reguläre Räder (z. B. ein Gravelbike). Daher ``bike_type_hint = ""`` und der
-  Typ wird inhaltlich bestimmt.
+Kachel ``productBox``:
+    productTitle / productManufacturer
+    zwei ``priceSpan`` ("3.499.-" UVP durchgestrichen, "2.492.-" aktuell) -
+    ohne zweiten Preis liegt kein Rabatt vor.
 
-Reduzierte Räder zeigen zwei ``priceSpan`` ("3.499.-" UVP durchgestrichen,
-"2.492.-" aktuell) plus "X € gespart auf UVP"; ohne zweiten Preis liegt kein
-Rabatt vor und der eigene Filter verwirft das Angebot.
+Paginierung ist **0-basiert** über ``pgNr`` (pgNr=0 = Seite 1). Der
+``/fahrrad-shop/``-Filter bleibt als Sicherung gegen versprengtes Nicht-Rad.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Iterator
 
 from ..htmlutil import Node, parse
@@ -26,14 +28,16 @@ from .base import Adapter, first_text, image_url, paged_listing
 class ZweiradStadler(Adapter):
     key = "stadler"
     name = "zweirad-stadler.de"
-    # Beide Outlet-Kategorien sind gemischt (E-Bike + Fahrrad) -> inhaltlich.
-    source_url = "https://shop.zweirad-stadler.de/e-bikes/outlet/"
-    extra_urls = ["https://shop.zweirad-stadler.de/fahrraeder/outlet/"]
-    bike_type_hint = ""
+    source_url = (
+        "https://shop.zweirad-stadler.de/fahrrad-shop/e-bikes/"
+        "?cl=alist&ldtype=infogrid&_artperpage=96&pgNr=0"
+    )
+    bike_type_hint = "ebike"  # typreine E-Bike-Kategorie
 
     @staticmethod
     def page_url(base: str, page: int) -> str:
-        return base if page <= 1 else f"{base}?pgNr={page}"
+        # Stadler/OXID paginiert 0-basiert über pgNr (pgNr=0 = Seite 1).
+        return re.sub(r"pgNr=\d+", f"pgNr={page - 1}", base)
 
     def scrape(self, fetcher: Fetcher, max_pages: int) -> Iterator[Offer]:
         def extract(html: str, base: str):
@@ -45,7 +49,7 @@ class ZweiradStadler(Adapter):
     def _to_offer(self, box: Node) -> Offer | None:
         link = box.find("a")
         href = (link.get("href") if link is not None else "") or ""
-        # Nur echte Räder: das Outlet mischt Bekleidung/Zubehör/Sportnahrung.
+        # Sicherung: nur echte Räder (Outlet-Altlast; die Kategorie ist sauber).
         if "/fahrrad-shop/" not in href:
             return None
         title = first_text(box, "productTitle")

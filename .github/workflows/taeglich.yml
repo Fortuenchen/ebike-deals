@@ -91,6 +91,7 @@ jobs:
           - shop: fischer          # fischer-bike.com (Shopware 5, E-Bike-Outlet)
           - shop: canyon           # canyon.com (SFCC/Demandware, E-Bike-Outlet)
           - shop: liquidlife       # liquid-life.de (Shopify-HTML, E-Bike-Sale)
+          - shop: bunnyhop         # bunnyhop.de (e-vendo, E-Bike-Sale, 120/Seite)
           - shop: ebikestock
             ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
           # Grosse Katalog-Shops: getrennter E-Bike- und Fahrrad-Shard mit je

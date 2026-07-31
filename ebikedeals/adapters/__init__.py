@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .base import Adapter
+from .bunnyhop import BunnyHop
 from .canyon import Canyon
 from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
 from .fischer import FischerBike
@@ -69,6 +70,7 @@ ADAPTERS: list[type[Adapter]] = [
     FischerBike,
     Canyon,
     LiquidLife,
+    BunnyHop,
 ]
 
 BY_KEY = {a.key: a for a in ADAPTERS}

@@ -6,6 +6,7 @@ from .base import Adapter
 from .canyon import Canyon
 from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
 from .fischer import FischerBike
+from .liquid_life import LiquidLife
 from .js_apps import BikeExchange, JobradLoop
 from .luckybike import LuckyBike
 from .magento import DasRadhaus, Fahrrad24, Fahrradlagerverkauf
@@ -67,6 +68,7 @@ ADAPTERS: list[type[Adapter]] = [
     Statera,
     FischerBike,
     Canyon,
+    LiquidLife,
 ]
 
 BY_KEY = {a.key: a for a in ADAPTERS}

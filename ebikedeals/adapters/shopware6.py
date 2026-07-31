@@ -158,10 +158,16 @@ class Statera(Shopware6Adapter):
 class BikeDiscount(Shopware6Adapter):
     key = "bikediscount"
     name = "bike-discount.de"
-    # The URL from the brief carries ?properties=...&order=topseller, but
-    # bike-discount's robots.txt has "Disallow: /*?" for all agents, so every
-    # query variant - including pagination - is off limits. The bare category
-    # path is explicitly allowed and lists the same products, so we use that
-    # and accept that only the first page is reachable.
-    source_url = "https://www.bike-discount.de/de/e-bike-kaufen"
-    fahrrad_urls = ["https://www.bike-discount.de/de/fahrrad-kaufen"]
+    # bike-discount.de erlaubt inzwischen Paginierung: die robots.txt sperrt nur
+    # noch "?p=0" (Seite null), nicht mehr jede Query - ?p=2,3,... sind frei.
+    # Einstieg deshalb über die dedizierte Sale-Kategorie (jede Seite = Deals,
+    # nicht die volle Kategorie mit überwiegend Normalpreisen) und tief paginiert.
+    # e-bike-kaufen/fahrrad-kaufen (Vollkategorie) bleiben als Rückfall.
+    source_url = "https://www.bike-discount.de/de/e-bike_sale"
+    extra_urls = ["https://www.bike-discount.de/de/e-bike-kaufen"]
+    fahrrad_urls = [
+        "https://www.bike-discount.de/de/fahrrad_sale",
+        "https://www.bike-discount.de/de/fahrrad-kaufen",
+    ]
+    #: die Sale-Kategorie geht über viele Seiten
+    page_budget = 15

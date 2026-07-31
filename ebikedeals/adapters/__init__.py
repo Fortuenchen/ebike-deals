@@ -8,6 +8,7 @@ from .canyon import Canyon
 from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
 from .fischer import FischerBike
 from .liquid_life import LiquidLife
+from .littlejohn import LittleJohn
 from .js_apps import BikeExchange, JobradLoop
 from .luckybike import LuckyBike
 from .magento import DasRadhaus, Fahrrad24, Fahrradlagerverkauf
@@ -71,6 +72,7 @@ ADAPTERS: list[type[Adapter]] = [
     Canyon,
     LiquidLife,
     BunnyHop,
+    LittleJohn,
 ]
 
 BY_KEY = {a.key: a for a in ADAPTERS}

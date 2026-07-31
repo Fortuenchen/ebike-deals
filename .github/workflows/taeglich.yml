@@ -92,6 +92,7 @@ jobs:
           - shop: canyon           # canyon.com (SFCC/Demandware, E-Bike-Outlet)
           - shop: liquidlife       # liquid-life.de (Shopify-HTML, E-Bike-Sale)
           - shop: bunnyhop         # bunnyhop.de (e-vendo, E-Bike-Sale, 120/Seite)
+          - shop: littlejohn       # littlejohnbikes.de (Cloudflare, via cffi; erste 6 Seiten)
           - shop: ebikestock
             ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
           # Grosse Katalog-Shops: getrennter E-Bike- und Fahrrad-Shard mit je

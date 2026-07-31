@@ -87,6 +87,9 @@ jobs:
           - shop: dasradhaus       # das-radhaus.de (Magento) - lokal geblockt, Pipeline-Test
           - shop: stadler          # zweirad-stadler.de (OXID Outlet)
           - shop: bikester         # bikester.de (Shopify, blind aufgebaut)
+          - shop: statera          # staterabikes.de (Shopware 6, Premium-E-Bike-Outlet)
+          - shop: fischer          # fischer-bike.com (Shopware 5, E-Bike-Outlet)
+          - shop: canyon           # canyon.com (SFCC/Demandware, E-Bike-Outlet)
           - shop: ebikestock
             ratings: true          # dieser leichte Job holt nebenbei alle Bewertungen
           # Grosse Katalog-Shops: getrennter E-Bike- und Fahrrad-Shard mit je

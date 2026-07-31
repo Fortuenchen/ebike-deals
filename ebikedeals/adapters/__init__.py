@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from .base import Adapter
+from .canyon import Canyon
 from .custom_html import FahrradXXL, NubukBikes, Rad1, Radfieber
+from .fischer import FischerBike
 from .js_apps import BikeExchange, JobradLoop
 from .luckybike import LuckyBike
 from .magento import DasRadhaus, Fahrrad24, Fahrradlagerverkauf
 from .rosebikes import RoseBikes
 from .shopify import Bikester, BikeMarket24, Boc24, EBikeOnly, FahrradDe, Upway
 from .stadler import ZweiradStadler
-from .shopware6 import BikeAngebot, BikeDiscount, Denfeld, MhwBike, RadweltShop
+from .shopware6 import BikeAngebot, BikeDiscount, Denfeld, MhwBike, RadweltShop, Statera
 from .woocommerce import EbikeStock
 
 
@@ -62,6 +64,9 @@ ADAPTERS: list[type[Adapter]] = [
     DasRadhaus,
     ZweiradStadler,
     Bikester,
+    Statera,
+    FischerBike,
+    Canyon,
 ]
 
 BY_KEY = {a.key: a for a in ADAPTERS}

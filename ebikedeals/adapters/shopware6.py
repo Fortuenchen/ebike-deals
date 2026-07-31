@@ -149,6 +149,12 @@ class RadweltShop(Shopware6Adapter):
     fahrrad_urls = ["https://www.radwelt-shop.de/sale/fahrrad-sale/"]
 
 
+class Statera(Shopware6Adapter):
+    key = "statera"
+    name = "staterabikes.de"
+    source_url = "https://www.staterabikes.de/sale/e-bike-sale/"
+
+
 class BikeDiscount(Shopware6Adapter):
     key = "bikediscount"
     name = "bike-discount.de"

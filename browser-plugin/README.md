@@ -27,9 +27,13 @@ Lesezugriff auf `fortuenchen.github.io`.
 1. `chrome://extensions` öffnen, **Entwicklermodus** einschalten.
 2. **Entpackte Erweiterung laden** → diesen Ordner (`browser-plugin/`) wählen.
 
-**Firefox** (121+)
+**Firefox** — eigener Build (Event-Page-Manifest) unter
+[`../browser-plugin-firefox/`](../browser-plugin-firefox/):
 1. `about:debugging#/runtime/this-firefox`
-2. **Temporäres Add-on laden…** → `manifest.json` wählen.
+2. **Temporäres Add-on laden…** → `browser-plugin-firefox/manifest.json` wählen.
+
+Der Code (background.js, popup.\*, deals.\*, icons) ist in beiden Builds identisch
+und über `globalThis.browser || globalThis.chrome` browserneutral.
 
 ## Bedienung
 
